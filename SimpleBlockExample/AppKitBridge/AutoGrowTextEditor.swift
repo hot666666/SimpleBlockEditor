@@ -16,6 +16,9 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 	// SwiftUI에서 의사결정 내려주는 훅 (없으면 기본 nil 반환)
 	var onDecide: (EditorEvent) -> EditCommand? = { _ in nil }
 	
+	// Row가 주는 포커스 지시 콜백
+	var onClick: () -> Void = {}
+	
 	func makeNSView(context: Context) -> AutoSizingTextView {
 		let tv = AutoSizingTextView()
 		tv.isEditable = true
@@ -30,6 +33,8 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 		
 		// 결정 콜백 연결
 		tv._decide = onDecide
+		// 포커스 콜백 연결
+		tv._onClick = onClick
 
 		return tv
 	}
@@ -65,6 +70,8 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 				DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
 			}
 		} else {
+			// 선택영역 해제
+			tv.selectedRange = .init(location: 0, length: 0)
 			if tv.window?.firstResponder === tv {
 				tv.window?.makeFirstResponder(nil) // 포커스 해제
 			}

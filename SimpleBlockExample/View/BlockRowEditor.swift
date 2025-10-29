@@ -13,13 +13,15 @@ struct BlockRowEditor: View {
 	let doc: BlockDocuments
 	@Bindable var node: BlockNode
 	
-	var decide: (EditorEvent) -> EditCommand? {
+	private var decide: (EditorEvent) -> EditCommand? {
 		{ e in doc.decide(e, for: node) }
 	}
 	
-	var isFocused: Bool {
-		doc.focusedNodeID == node.id
+	private var click: () -> Void {
+		{ doc.setFocus(to: node) }
 	}
+	
+	private var isFocused: Bool { doc.focusedNodeID == node.id }
 	
 	var body: some View {
 		HStack(alignment: .top, spacing: 3) {
@@ -33,7 +35,8 @@ struct BlockRowEditor: View {
 				text: $node.text,
 				font: node.kind.font,
 				isFocused: isFocused,
-				onDecide: decide
+				onDecide: decide,
+				onClick: click
 			)
 			.fixedSize(horizontal: false, vertical: true)
 		}
@@ -47,15 +50,18 @@ fileprivate struct GutterView: View {
 	var listNumber: Int?
 	
 	var body: some View {
-		content
-			.font(Font(kind.font))
+		ZStack {
+			content
+		}
+		.frame(width: 14, height: 14)
 	}
 	
 	@ViewBuilder
 	private var content: some View {
 		switch kind {
 		case .bullet:
-			Text("•")
+			Image(systemName: "circle.fill")
+				.font(.system(size: 6))
 			
 		case .ordered:
 			Text("\(listNumber ?? 1).")

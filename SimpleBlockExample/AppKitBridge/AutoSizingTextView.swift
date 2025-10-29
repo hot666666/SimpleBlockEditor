@@ -10,6 +10,8 @@ import AppKit
 final class AutoSizingTextView: NSTextView {
 	// SwiftUI의 결정 훅
 	var _decide: ((EditorEvent) -> EditCommand?)?
+	// 마우스 클릭 훅
+	var _onClick: (() -> Void)?
 	
 	// 입력 위치 정보
 	private func caretInfo() -> CaretInfo {
@@ -54,6 +56,17 @@ final class AutoSizingTextView: NSTextView {
     invalidateIntrinsicContentSize()
   }
 }
+
+// MARK: - 마우스 입력 처리
+
+extension AutoSizingTextView {
+	override func mouseDown(with event: NSEvent) {
+		_onClick?()                     // 먼저 문서 포커스 갱신 요청
+		super.mouseDown(with: event)    // 기본 커서/선택 동작 유지
+	}
+}
+
+// MARK: - 키보드 입력 처리
 
 extension AutoSizingTextView {
 	// MARK: - keyDown 재정의: Enter/Shift+Enter 구분
