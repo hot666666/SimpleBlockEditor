@@ -54,9 +54,41 @@ final class AutoSizingTextView: NSTextView {
     invalidateIntrinsicContentSize()
   }
 }
+
 extension AutoSizingTextView {
-	// 스페이스 입력 훅
+	// MARK: - keyDown 재정의: Enter/Shift+Enter 구분
+	/*
+	Keyboard → keyDown(with:)
+							 ↓
+						 [내가 처리하면 return]
+							 ↓
+						 super.keyDown(with:)
+							 ↓
+						 interpretKeyEvents(_:)
+							 ├── 문자입력  → insertText(_:)
+							 └── 명령입력  → doCommand(by:)
+															├─ insertNewline(_:) → handleEnter
+															├─ deleteBackward(_:) → handleDelete
+															└─ ...
+	 */
+	override func keyDown(with event: NSEvent) {
+		/// 36: Return, 76: Keypad Enter
+		if event.keyCode == 36 || event.keyCode == 76 {
+			if event.modifierFlags.contains(.shift) {
+				handleSoftBreak()
+			} else {
+				handleEnter()
+			}
+			return
+		}
+		
+		// 기본 처리
+		super.keyDown(with: event)
+	}
+	
+	// MARK: - 기본 입력 처리 재정의: 스페이스바 입력 시 SwiftUI 훅 호출
 	override func insertText(_ insertString: Any, replacementRange: NSRange) {
+		// SPACE(스페이스바): SwiftUI 훅 호출
 		if let s = insertString as? String, s == " " {
 			let info = caretInfo()
 			// SwiftUI의 결정 훅 호출
@@ -77,11 +109,7 @@ extension AutoSizingTextView {
 					}
 				}
 				// 3) 커서 이동
-				if let pos = cmd.setCaretUTF16 {
-					let len = (string as NSString).length
-					let clamped = max(0, min(pos, len))
-					setSelectedRange(NSRange(location: clamped, length: 0))
-				}
+				setSelectedRange(NSRange(location: 0, length: 0))
 				
 				undoManager?.endUndoGrouping()
 				return
@@ -90,5 +118,30 @@ extension AutoSizingTextView {
 		
 		// 기본 처리
 		super.insertText(insertString, replacementRange: replacementRange)
+	}
+	
+	// MARK: - 기본 삭제 처리 재정의: 커서가 0이고 선택 없으면 deleteAtStart 이벤트로 병합/타입해제 결정
+	override func deleteBackward(_ sender: Any?) {
+		let ns = selectedRange()
+		if ns.length == 0, ns.location == 0 {
+			let _ = _decide?(.deleteAtStart)
+			return
+		}
+		
+		// 기본 처리
+		super.deleteBackward(sender)
+	}
+	
+	// Enter → 문서 분할
+	private func handleEnter() {
+		let info = caretInfo()
+		let isTail = (info.grapheme == self.string.count)  // 현재 커서가 줄 끝인지
+		let _ = _decide?(.enter(info, isTail))
+	}
+	
+	// Shift+Enter → 실제 "\n" 추가
+	private func handleSoftBreak() {
+		// let _ = _decide?(.shiftEnter) // 정책 훅
+		super.insertLineBreak(nil)
 	}
 }

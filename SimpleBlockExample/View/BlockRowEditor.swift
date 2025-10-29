@@ -17,6 +17,10 @@ struct BlockRowEditor: View {
 		{ e in doc.decide(e, for: node) }
 	}
 	
+	var isFocused: Bool {
+		doc.focusedNodeID == node.id
+	}
+	
 	var body: some View {
 		HStack(alignment: .top, spacing: 3) {
 			if node.kind.usesGutter {
@@ -28,6 +32,7 @@ struct BlockRowEditor: View {
 			AutoGrowTextEditor(
 				text: $node.text,
 				font: node.kind.font,
+				isFocused: isFocused,
 				onDecide: decide
 			)
 			.fixedSize(horizontal: false, vertical: true)

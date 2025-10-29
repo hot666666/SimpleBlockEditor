@@ -11,6 +11,7 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 	@Binding var text: String
 	var font: NSFont
 	var textInsets: NSSize = .init(width: 0, height: 0)
+	var isFocused: Bool = false
 	
 	// SwiftUI에서 의사결정 내려주는 훅 (없으면 기본 nil 반환)
 	var onDecide: (EditorEvent) -> EditCommand? = { _ in nil }
@@ -55,6 +56,18 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 		if tv.textContainerInset != textInsets {
 			tv.textContainerInset = textInsets
 			tv.invalidateIntrinsicContentSize()
+		}
+		
+		// 포커스 토글 (매 프레임 훔치지 않게 비교 후 적용)
+		if isFocused {
+			if tv.window?.firstResponder !== tv {
+				// window 붙기 전에 부르면 실패할 수 있으니 main-async 한 번 감싸는 게 안전
+				DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
+			}
+		} else {
+			if tv.window?.firstResponder === tv {
+				tv.window?.makeFirstResponder(nil) // 포커스 해제
+			}
 		}
 	}
 	

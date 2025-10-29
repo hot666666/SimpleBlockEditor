@@ -14,9 +14,9 @@ struct CaretInfo {
 /// 에디터에서 SwiftUI로 올리는 이벤트 (필요 최소)
 enum EditorEvent {
 	case space(CaretInfo)                         // 스페이스 눌렀다
-	case enter(CaretInfo, tail: String?)          // 엔터 (tail: 커서 뒤 텍스트, 끝이면 nil)
+	case enter(CaretInfo, Bool)           // 엔터 (isTail: 커서가 줄 끝에 있나)
 	case shiftEnter(CaretInfo)                    // 쉬프트+엔터 (소프트 브레이크)
-	case deleteAtStart(CaretInfo)                 // 커서가 0에서 delete
+	case deleteAtStart              // 커서가 0에서 delete
 }
 
 /// NSTextView에게 내려보낼 편집 명령 (동기 적용)
