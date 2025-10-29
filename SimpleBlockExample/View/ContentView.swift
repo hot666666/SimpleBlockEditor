@@ -66,13 +66,17 @@ final class BlockDocuments {
 			
 		case .enter(let info, let isTail):
 			guard let idx = getIndex(of: node) else { return nil }
-			// TODO: - 이전 블록이 -, *, 1. 등일 때 현재 블록도 동일하게 변경
+			
+			var kind = BlockKind.paragraph
+			if node.kind == .bullet || node.kind == .ordered || node.kind == .todo(checked: false) || node.kind == .todo(checked: true) {
+				kind = node.kind
+			}
 			
 			if !isTail {
 				let tail = node.text.cutSuffix(fromGrapheme: info.grapheme)
-				insertNode(BlockNode(kind: .paragraph, text: tail), at: idx + 1)
+				insertNode(BlockNode(kind: kind, text: tail), at: idx + 1)
 			} else {
-				insertNode(BlockNode(kind: .paragraph), at: idx + 1)
+				insertNode(BlockNode(kind: kind), at: idx + 1)
 			}
 			
 			setFocus(to: nodes[idx + 1])

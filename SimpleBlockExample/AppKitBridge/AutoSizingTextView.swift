@@ -88,6 +88,7 @@ extension AutoSizingTextView {
 	
 	// MARK: - 기본 입력 처리 재정의: 스페이스바 입력 시 SwiftUI 훅 호출
 	override func insertText(_ insertString: Any, replacementRange: NSRange) {
+		// TODO: - 정리
 		// SPACE(스페이스바): SwiftUI 훅 호출
 		if let s = insertString as? String, s == " " {
 			let info = caretInfo()
