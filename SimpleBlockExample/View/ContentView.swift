@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-	@State private var doc = BlockDocuments()
+	@State private var doc = BlockManager()
 	
 	var body: some View {
 		List {

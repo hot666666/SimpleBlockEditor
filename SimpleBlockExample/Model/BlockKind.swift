@@ -26,20 +26,20 @@ extension BlockKind {
 	var font: NSFont {
 		switch self {
 		case .paragraph:
-			return NSFont.systemFont(ofSize: 14)
+			return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
 		case .heading(let level):
 			switch level {
 			case 1:
-				return NSFont.boldSystemFont(ofSize: 24)
+				return NSFont.monospacedSystemFont(ofSize: 24, weight: .bold)
 			case 2:
-				return NSFont.boldSystemFont(ofSize: 20)
+				return NSFont.monospacedSystemFont(ofSize: 20, weight: .bold)
 			case 3:
-				return NSFont.boldSystemFont(ofSize: 16)
+				return NSFont.monospacedSystemFont(ofSize: 16, weight: .bold)
 			default:
-				return NSFont.boldSystemFont(ofSize: 14)
+				return NSFont.monospacedSystemFont(ofSize: 14, weight: .bold)
 			}
 		case .bullet, .ordered, .todo(_):
-			return NSFont.systemFont(ofSize: 14)
+			return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
 		}
 	}
 }

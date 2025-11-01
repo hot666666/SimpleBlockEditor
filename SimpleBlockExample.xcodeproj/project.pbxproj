@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		45A82BBA2EB5DB1D00D0C6FD /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
 		45BF61692EB093CF009D76E4 /* SimpleBlockExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimpleBlockExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -32,6 +33,7 @@
 		45BF61602EB093CF009D76E4 = {
 			isa = PBXGroup;
 			children = (
+				45A82BBA2EB5DB1D00D0C6FD /* AGENTS.md */,
 				45BF616B2EB093CF009D76E4 /* SimpleBlockExample */,
 				45BF616A2EB093CF009D76E4 /* Products */,
 			);
