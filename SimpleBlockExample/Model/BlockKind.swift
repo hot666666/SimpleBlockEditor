@@ -23,11 +23,24 @@ enum BlockKind: Equatable {
 }
 
 extension BlockKind {
-	var font: NSFont {
-		switch self {
-		case .paragraph:
-			return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
-		case .heading(let level):
+    // Provide a nonisolated Equatable implementation so tests can compare
+    // kinds outside the main actor context (Swift 6 isolation rules).
+    nonisolated static func == (lhs: BlockKind, rhs: BlockKind) -> Bool {
+        switch (lhs, rhs) {
+        case (.paragraph, .paragraph): return true
+        case let (.heading(a), .heading(b)): return a == b
+        case (.bullet, .bullet): return true
+        case (.ordered, .ordered): return true
+        case let (.todo(a), .todo(b)): return a == b
+        default: return false
+        }
+    }
+
+    var font: NSFont {
+        switch self {
+        case .paragraph:
+            return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        case .heading(let level):
 			switch level {
 			case 1:
 				return NSFont.monospacedSystemFont(ofSize: 24, weight: .bold)

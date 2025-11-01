@@ -41,6 +41,20 @@ struct EditCommand {
 
 /// 포커스 이동 종류
 enum FocusChange: Equatable {
-	case otherNode(id: UUID, caret: Int)
-	case clear
+    case otherNode(id: UUID, caret: Int)
+    case clear
+}
+
+// Make equality usable from non-main-actor contexts (e.g., pure model tests).
+extension FocusChange {
+    nonisolated static func == (lhs: FocusChange, rhs: FocusChange) -> Bool {
+        switch (lhs, rhs) {
+        case (.clear, .clear):
+            return true
+        case let (.otherNode(id1, caret1), .otherNode(id2, caret2)):
+            return id1 == id2 && caret1 == caret2
+        default:
+            return false
+        }
+    }
 }

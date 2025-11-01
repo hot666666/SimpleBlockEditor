@@ -9,13 +9,21 @@ import SwiftUI
 
 @Observable
 final class BlockManager {
-	private(set) var focusedNodeID: UUID? = nil
+	private(set) var focusedNodeID: UUID?
 	
-	private(set) var nodes: [BlockNode] = [
-		BlockNode(kind: .heading(level: 1), text: "이것은 제목"),
-		BlockNode(kind: .todo(checked: false), text: "할일1"),
-		BlockNode(kind: .todo(checked: false), text: "할일2 ")
-	]
+	private(set) var nodes: [BlockNode]
+	
+	init(
+		nodes: [BlockNode] = [
+			BlockNode(kind: .heading(level: 1), text: "이것은 제목"),
+			BlockNode(kind: .todo(checked: false), text: "할일1"),
+			BlockNode(kind: .todo(checked: false), text: "할일2 ")
+		],
+		focusedNodeID: UUID? = nil
+	) {
+		self.nodes = nodes
+		self.focusedNodeID = focusedNodeID
+	}
 	
 	func appendNode(_ node: BlockNode) {
 		nodes.append(node)
