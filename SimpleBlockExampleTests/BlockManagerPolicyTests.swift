@@ -8,7 +8,7 @@ struct BlockManagerPolicyTests {
 	@Test("Space trigger converts heading and removes prefix")
 	func spaceTriggerConvertsHeadingAndRemovesPrefix() {
 		let node = BlockNode(kind: .paragraph, text: "#")
-		let manager = BlockManager(nodes: [node])
+		let manager = makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 1, string: "#")
 
@@ -25,7 +25,7 @@ struct BlockManagerPolicyTests {
 	@Test("Space trigger converts todo state")
 	func spaceTriggerConvertsTodoState() {
 		let node = BlockNode(kind: .paragraph, text: "[x]")
-		let manager = BlockManager(nodes: [node])
+		let manager = makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 3, string: "[x]")
 
@@ -42,7 +42,7 @@ struct BlockManagerPolicyTests {
 	@Test("Enter at tail inserts sibling and focuses it")
 	func enterAtTailInsertsSiblingAndFocusesIt() {
 		let node = BlockNode(kind: .todo(checked: false), text: "Task")
-		let manager = BlockManager(nodes: [node])
+		let manager = makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 4, string: "Task")
 
@@ -61,7 +61,7 @@ struct BlockManagerPolicyTests {
 	@Test("Enter inside splits node and keeps tail text")
 	func enterInsideSplitsNodeAndKeepsTailText() {
 		let node = BlockNode(kind: .paragraph, text: "HelloWorld")
-		let manager = BlockManager(nodes: [node])
+		let manager = makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 5, string: "HelloWorld")
 
@@ -82,7 +82,7 @@ struct BlockManagerPolicyTests {
 	@Test("Delete at start resets style to paragraph")
 	func deleteAtStartResetsStyleToParagraph() {
 		let node = BlockNode(kind: .heading(level: 2), text: "Title")
-		let manager = BlockManager(nodes: [node])
+		let manager = makeManager(nodes: [node])
 
 		guard let command = manager.decide(.deleteAtStart, for: node) else {
 			Issue.record("Expected EditCommand for style reset")
@@ -97,7 +97,7 @@ struct BlockManagerPolicyTests {
 	func deleteAtStartMergesWithPreviousParagraph() {
 		let prev = BlockNode(kind: .paragraph, text: "Hello")
 		let node = BlockNode(kind: .paragraph, text: "World")
-		let manager = BlockManager(nodes: [prev, node])
+		let manager = makeManager(nodes: [prev, node])
 
 		guard let command = manager.decide(.deleteAtStart, for: node) else {
 			Issue.record("Expected EditCommand for merge")
@@ -114,7 +114,7 @@ struct BlockManagerPolicyTests {
 	func arrowLeftAtStartFocusesPreviousNodeEnd() {
 		let prev = BlockNode(kind: .paragraph, text: "Prev")
 		let node = BlockNode(kind: .paragraph, text: "Current")
-		let manager = BlockManager(nodes: [prev, node])
+		let manager = makeManager(nodes: [prev, node])
 
 		let info = singleLineCaret(location: 0, string: "Current")
 
@@ -130,7 +130,7 @@ struct BlockManagerPolicyTests {
 	func arrowRightAtTailFocusesNextNode() {
 		let node = BlockNode(kind: .paragraph, text: "Current")
 		let next = BlockNode(kind: .paragraph, text: "Next")
-		let manager = BlockManager(nodes: [node, next])
+		let manager = makeManager(nodes: [node, next])
 
 		let info = singleLineCaret(location: 7, string: "Current")
 
@@ -146,7 +146,7 @@ struct BlockManagerPolicyTests {
 	func arrowUpJumpsToPreviousMultilineNodeTail() {
 		let prev = BlockNode(kind: .paragraph, text: "Hello\nWorld")
 		let node = BlockNode(kind: .paragraph, text: "Current")
-		let manager = BlockManager(nodes: [prev, node])
+		let manager = makeManager(nodes: [prev, node])
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
@@ -163,7 +163,7 @@ struct BlockManagerPolicyTests {
 	func arrowDownKeepsHorizontalColumnWhenPossible() {
 		let node = BlockNode(kind: .paragraph, text: "Current")
 		let next = BlockNode(kind: .paragraph, text: "Ok")
-		let manager = BlockManager(nodes: [node, next])
+		let manager = makeManager(nodes: [node, next])
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
@@ -174,6 +174,74 @@ struct BlockManagerPolicyTests {
 
 		let expectedCaret = min(info.columnUTF16, (next.text as NSString).length)
 		#expect(command.requestFocusChange == .otherNode(id: next.id, caret: expectedCaret))
+	}
+
+	@Test("Store actions report updates")
+	func storeActionsReportUpdates() {
+		var updates: [(UUID, Int)] = []
+		let actions = BlockStoreActions(onUpdate: { node, index in
+			updates.append((node.id, index))
+		})
+
+		let node = BlockNode(kind: .paragraph, text: "#")
+		let manager = BlockManager(
+			nodes: [node],
+			policy: DefaultBlockEditingPolicy(),
+			storeActions: actions
+		)
+
+		let info = singleLineCaret(location: 1, string: "#")
+		_ = manager.decide(.space(info), for: node)
+
+		#expect(updates == [(node.id, 0)])
+	}
+
+	@Test("Store actions report inserts")
+	func storeActionsReportInserts() {
+		var inserts: [(UUID, Int)] = []
+		let actions = BlockStoreActions(onInsert: { node, index in
+			inserts.append((node.id, index))
+		})
+
+		let node = BlockNode(kind: .paragraph, text: "HelloWorld")
+		let manager = BlockManager(
+			nodes: [node],
+			policy: DefaultBlockEditingPolicy(),
+			storeActions: actions
+		)
+
+		let info = singleLineCaret(location: 5, string: "HelloWorld")
+		_ = manager.decide(.enter(info, false), for: node)
+
+		#expect(inserts.count == 1)
+		#expect(inserts.first?.1 == 1)
+	}
+
+	@Test("Store actions report removals and merges")
+	func storeActionsReportRemovalsAndMerges() {
+		var removals: [(UUID, Int)] = []
+		var updates: [UUID] = []
+		var merges: [(UUID, UUID)] = []
+
+		let actions = BlockStoreActions(
+			onUpdate: { node, _ in updates.append(node.id) },
+			onRemove: { node, index in removals.append((node.id, index)) },
+			onMerge: { source, target in merges.append((source.id, target.id)) }
+		)
+
+		let head = BlockNode(kind: .paragraph, text: "Hello")
+		let tail = BlockNode(kind: .paragraph, text: "World")
+		let manager = BlockManager(
+			nodes: [head, tail],
+			policy: DefaultBlockEditingPolicy(),
+			storeActions: actions
+		)
+
+		_ = manager.decide(.deleteAtStart, for: tail)
+
+		#expect(removals == [(tail.id, 1)])
+		#expect(updates.contains(head.id))
+		#expect(merges == [(tail.id, head.id)])
 	}
 }
 
@@ -194,4 +262,8 @@ private func singleLineCaret(location: Int, string: String, selectionLength: Int
 		columnUTF16: location,
 		columnGrapheme: location
 	)
+}
+
+private func makeManager(nodes: [BlockNode]) -> BlockManager {
+	BlockManager(nodes: nodes, policy: DefaultBlockEditingPolicy())
 }

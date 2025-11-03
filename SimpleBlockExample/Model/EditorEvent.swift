@@ -4,6 +4,7 @@
 //
 //  Created by hs on 10/28/25.
 //
+
 import Foundation
 
 /// 에디터에서 SwiftUI로 올리는 이벤트
