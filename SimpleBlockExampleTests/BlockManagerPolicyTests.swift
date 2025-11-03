@@ -3,6 +3,9 @@ import Testing
 
 @testable import SimpleBlockExample
 
+// MARK: - Tests for BlockManager editing policy decisions.
+
+@MainActor
 @Suite("BlockManagerPolicyTests")
 struct BlockManagerPolicyTests {
 	@Test("Space trigger converts heading and removes prefix")
@@ -176,76 +179,109 @@ struct BlockManagerPolicyTests {
 		#expect(command.requestFocusChange == .otherNode(id: next.id, caret: expectedCaret))
 	}
 
-	@Test("Store actions report updates")
-	func storeActionsReportUpdates() {
-		var updates: [(UUID, Int)] = []
-		let actions = BlockStoreActions(onUpdate: { node, index in
-			updates.append((node.id, index))
-		})
-
+	@Test("Policy notifies context when style changes")
+	func policyNotifiesContextWhenStyleChanges() {
 		let node = BlockNode(kind: .paragraph, text: "#")
-		let manager = BlockManager(
-			nodes: [node],
-			policy: DefaultBlockEditingPolicy(),
-			storeActions: actions
-		)
+		let context = MockContext(nodes: [node])
+		let policy = DefaultBlockEditingPolicy()
 
 		let info = singleLineCaret(location: 1, string: "#")
-		_ = manager.decide(.space(info), for: node)
+		guard let command = policy.decide(event: .space(info), node: node, in: context) else {
+			Issue.record("Expected EditCommand for heading trigger")
+			return
+		}
 
-		#expect(updates == [(node.id, 0)])
+		#expect(command.removePrefixUTF16 == 2)
+		#expect(context.notifiedUpdates.contains { $0 === node })
 	}
 
-	@Test("Store actions report inserts")
-	func storeActionsReportInserts() {
-		var inserts: [(UUID, Int)] = []
-		let actions = BlockStoreActions(onInsert: { node, index in
-			inserts.append((node.id, index))
-		})
-
+	@Test("Policy inserts new node via context when splitting")
+	func policyInsertsNewNodeViaContextWhenSplitting() {
 		let node = BlockNode(kind: .paragraph, text: "HelloWorld")
-		let manager = BlockManager(
-			nodes: [node],
-			policy: DefaultBlockEditingPolicy(),
-			storeActions: actions
-		)
+		let context = MockContext(nodes: [node])
+		let policy = DefaultBlockEditingPolicy()
 
 		let info = singleLineCaret(location: 5, string: "HelloWorld")
-		_ = manager.decide(.enter(info, false), for: node)
+		guard policy.decide(event: .enter(info, false), node: node, in: context) != nil else {
+			Issue.record("Expected EditCommand for enter split")
+			return
+		}
 
-		#expect(inserts.count == 1)
-		#expect(inserts.first?.1 == 1)
+		#expect(context.insertedNodes.count == 1)
+		let inserted = context.insertedNodes[0]
+		#expect(inserted.index == 1)
+		#expect(inserted.node.kind == .paragraph)
+		#expect(inserted.node.text == "World")
+		#expect(context.notifiedUpdates.contains { $0 === node })
 	}
 
-	@Test("Store actions report removals and merges")
-	func storeActionsReportRemovalsAndMerges() {
-		var removals: [(UUID, Int)] = []
-		var updates: [UUID] = []
-		var merges: [(UUID, UUID)] = []
-
-		let actions = BlockStoreActions(
-			onUpdate: { node, _ in updates.append(node.id) },
-			onRemove: { node, index in removals.append((node.id, index)) },
-			onMerge: { source, target in merges.append((source.id, target.id)) }
-		)
-
+	@Test("Policy removes and merges nodes through context on delete")
+	func policyRemovesAndMergesNodesThroughContextOnDelete() {
 		let head = BlockNode(kind: .paragraph, text: "Hello")
 		let tail = BlockNode(kind: .paragraph, text: "World")
-		let manager = BlockManager(
-			nodes: [head, tail],
-			policy: DefaultBlockEditingPolicy(),
-			storeActions: actions
-		)
+		let context = MockContext(nodes: [head, tail])
+		let policy = DefaultBlockEditingPolicy()
 
-		_ = manager.decide(.deleteAtStart, for: tail)
+		guard policy.decide(event: .deleteAtStart, node: tail, in: context) != nil else {
+			Issue.record("Expected EditCommand for delete at start")
+			return
+		}
 
-		#expect(removals == [(tail.id, 1)])
-		#expect(updates.contains(head.id))
-		#expect(merges == [(tail.id, head.id)])
+		#expect(context.removedIndices == [1])
+		#expect(context.notifiedUpdates.contains { $0 === head })
+		let mergePairs = context.notifiedMerges.map { ($0.source, $0.target) }
+		#expect(mergePairs.contains { $0.0 === tail && $0.1 === head })
+		#expect(head.text == "HelloWorld")
 	}
 }
 
 // MARK: - Helpers
+
+private final class MockContext: BlockEditingContext {
+	var nodes: [BlockNode]
+	var insertedNodes: [(node: BlockNode, index: Int)] = []
+	var removedIndices: [Int] = []
+	var notifiedUpdates: [BlockNode] = []
+	var notifiedMerges: [(source: BlockNode, target: BlockNode)] = []
+
+	init(nodes: [BlockNode]) {
+		self.nodes = nodes
+	}
+
+	func index(of node: BlockNode) -> Int? {
+		nodes.firstIndex { $0 === node }
+	}
+
+	func previousNode(of node: BlockNode) -> BlockNode? {
+		guard let idx = index(of: node), idx > 0 else { return nil }
+		return nodes[idx - 1]
+	}
+
+	func nextNode(of node: BlockNode) -> BlockNode? {
+		guard let idx = index(of: node), idx < nodes.count - 1 else { return nil }
+		return nodes[idx + 1]
+	}
+
+	func insertNode(_ node: BlockNode, at index: Int) {
+		let clamped = max(0, min(index, nodes.count))
+		nodes.insert(node, at: clamped)
+		insertedNodes.append((node, clamped))
+	}
+
+	func removeNode(at index: Int) {
+		guard nodes.indices.contains(index) else { return }
+		nodes.remove(at: index)
+		removedIndices.append(index)
+	}
+
+	func notifyUpdate(of node: BlockNode) {
+		notifiedUpdates.append(node)
+	}
+
+	func notifyMerge(from source: BlockNode, into target: BlockNode) {
+		notifiedMerges.append((source, target))
+	}
+}
 
 private func singleLineCaret(location: Int, string: String, selectionLength: Int = 0) -> CaretInfo {
 	let length = (string as NSString).length
@@ -264,6 +300,9 @@ private func singleLineCaret(location: Int, string: String, selectionLength: Int
 	)
 }
 
+@MainActor
 private func makeManager(nodes: [BlockNode]) -> BlockManager {
-	BlockManager(nodes: nodes, policy: DefaultBlockEditingPolicy())
+	let manager = BlockManager(policy: DefaultBlockEditingPolicy())
+	manager.replaceAll(with: nodes)
+	return manager
 }

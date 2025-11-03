@@ -7,9 +7,24 @@
 
 import Foundation
 
+// MARK: - Editing policy contracts
+
+protocol BlockEditingContext: AnyObject {
+	var nodes: [BlockNode] { get }
+	func index(of node: BlockNode) -> Int?
+	func previousNode(of node: BlockNode) -> BlockNode?
+	func nextNode(of node: BlockNode) -> BlockNode?
+	func insertNode(_ node: BlockNode, at index: Int)
+	func removeNode(at index: Int)
+	func notifyUpdate(of node: BlockNode)
+	func notifyMerge(from source: BlockNode, into target: BlockNode)
+}
+
 protocol BlockEditingPolicy {
 	func decide(event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand?
 }
+
+// MARK: - Default policy
 
 struct DefaultBlockEditingPolicy: BlockEditingPolicy {
 	func decide(event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand? {
@@ -40,6 +55,8 @@ struct DefaultBlockEditingPolicy: BlockEditingPolicy {
 		}
 	}
 }
+
+// MARK: - Default handlers
 
 private extension DefaultBlockEditingPolicy {
 	func handleSpace(info: CaretInfo, node: BlockNode, context: BlockEditingContext) -> EditCommand? {

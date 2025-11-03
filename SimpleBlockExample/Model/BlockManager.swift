@@ -9,59 +9,150 @@ import SwiftUI
 
 @Observable
 final class BlockManager {
-	private(set) var focusedNodeID: UUID?
-	private(set) var nodes: [BlockNode]
-
 	private let policy: any BlockEditingPolicy
-	private let storeActions: BlockStoreActions
-
+	private let store: BlockStore?
+	
+	private(set) var nodes: [BlockNode] = [.init(kind: .paragraph, text: "")]
+	private(set) var focusedNodeID: UUID?
+	
+	private var listen: Task<Void, Never>?
+	
 	init(
-		nodes: [BlockNode] = [],
+		store: BlockStore? = nil,
 		policy: any BlockEditingPolicy = DefaultBlockEditingPolicy(),
-		focusedNodeID: UUID? = nil,
-		storeActions: BlockStoreActions = BlockStoreActions()
 	) {
-		self.nodes = nodes
 		self.policy = policy
-		self.focusedNodeID = focusedNodeID
-		self.storeActions = storeActions
+		self.store = store
+		
+		listen = Task {
+			await bootstrapStore()
+		}
 	}
-
-	// MARK: - Public mutations
-
-	func appendNode(_ node: BlockNode) {
-		insertNode(node, at: nodes.count)
+	
+	deinit {
+		listen?.cancel()
+		listen = nil
 	}
-
-	func insertNode(_ node: BlockNode, at index: Int) {
-		let clampedIndex = max(0, min(index, nodes.count))
-		nodes.insert(node, at: clampedIndex)
-		storeActions.onInsert?(node, clampedIndex)
-	}
-
-	// MARK: - Policy bridge
-
+	
+	// MARK: - Public operations
+	
 	func decide(_ event: EditorEvent, for node: BlockNode) -> EditCommand? {
 		policy.decide(event: event, node: node, in: self)
 	}
-
-	// MARK: - NSTextView에서 SwiftUI가 해야할 명령 적용
-
-	func apply(_ cmd: EditCommand) {
-		guard let focusChange = cmd.requestFocusChange else { return }
-
-		switch focusChange {
+	
+	func apply(_ command: EditCommand) {
+		guard let focus = command.requestFocusChange else { return }
+		switch focus {
 		case .otherNode(let id, _):
-			guard let node = nodes.first(where: { $0.id == id }) else { return }
-			focusedNodeID = node.id
+			focusedNodeID = id
 		case .clear:
 			focusedNodeID = nil
 		}
 	}
+	
+	func appendNode(_ node: BlockNode) {
+		insert(node, at: nodes.count, emitStoreEvent: true)
+	}
+	
+	func replaceAll(with defaultNode: [BlockNode]) {
+		nodes = defaultNode
+		sendStoreEvent(.replaced(defaultNode))
+	}
+}
 
-	func notifyUpdate(of node: BlockNode) {
-		guard let idx = index(of: node) else { return }
-		storeActions.onUpdate?(node, idx)
+// MARK: - Store bootstrap
+
+private extension BlockManager {
+	func bootstrapStore() async {
+		guard let store = store else { return }
+		
+		let initial = await store.load()
+		
+		await MainActor.run {
+			if !initial.isEmpty {
+				self.nodes = initial
+			}
+		}
+		
+		if initial.isEmpty {
+			sendStoreEvent(.replaced(nodes))
+		}
+		
+		for await event in store.updates() {
+			await MainActor.run {
+				self.handleExternal(event)
+			}
+		}
+	}
+	
+	func sendStoreEvent(_ event: BlockStoreEvent) {
+		guard let store else { return }
+		Task {
+			await store.apply(event)
+		}
+	}
+	
+	@MainActor
+	func handleExternal(_ event: BlockStoreEvent) {
+		switch event {
+		case .inserted(let node, at: let index):
+			insert(node, at: index, emitStoreEvent: false)
+			
+		case .updated(let node, at: let index):
+			update(node, at: index, emitStoreEvent: false)
+			
+		case .removed(let node, at: let index):
+			remove(node, at: index, emitStoreEvent: false)
+			
+		case .merged(let source, let target):
+			remove(source, at: nil, emitStoreEvent: false)
+			update(target, at: nil, emitStoreEvent: false)
+			
+		case .replaced(let newNodes):
+			nodes = newNodes
+		}
+	}
+	
+	func insert(_ node: BlockNode, at index: Int, emitStoreEvent: Bool) {
+		let clamped = max(0, min(index, nodes.count))
+		nodes.insert(node, at: clamped)
+		
+		if emitStoreEvent {
+			sendStoreEvent(.inserted(node, at: clamped))
+		}
+	}
+	
+	func update(_ node: BlockNode, at indexHint: Int?, emitStoreEvent: Bool) {
+		let idx = indexHint ?? index(ofNodeID: node.id)
+		guard let idx else { return }
+		
+		nodes[idx].kind = node.kind
+		nodes[idx].text = node.text
+		nodes[idx].listNumber = node.listNumber
+		
+		if emitStoreEvent {
+			sendStoreEvent(.updated(nodes[idx], at: idx))
+		}
+	}
+	
+	func remove(_ node: BlockNode, at indexHint: Int?, emitStoreEvent: Bool) {
+		let idx = indexHint ?? index(ofNodeID: node.id)
+		guard let idx else { return }
+		
+		let removed = nodes.remove(at: idx)
+		if emitStoreEvent {
+			sendStoreEvent(.removed(removed, at: idx))
+		}
+	}
+	
+	func index(ofNodeID id: UUID) -> Int? {
+		nodes.firstIndex(where: { $0.id == id })
+	}
+	
+	func sendUpdate(forNodeID nodeID: UUID) {
+		guard let idx = index(ofNodeID: nodeID) else { return }
+		let node = nodes[idx]
+		sendStoreEvent(.updated(node, at: idx))
 	}
 }
 
@@ -69,26 +160,35 @@ final class BlockManager {
 
 extension BlockManager: BlockEditingContext {
 	func index(of node: BlockNode) -> Int? {
-		nodes.firstIndex(of: node)
+		index(ofNodeID: node.id)
 	}
-
+	
 	func previousNode(of node: BlockNode) -> BlockNode? {
 		guard let idx = index(of: node), idx > 0 else { return nil }
 		return nodes[idx - 1]
 	}
-
+	
 	func nextNode(of node: BlockNode) -> BlockNode? {
 		guard let idx = index(of: node), idx < nodes.count - 1 else { return nil }
 		return nodes[idx + 1]
 	}
-
+	
+	func insertNode(_ node: BlockNode, at index: Int) {
+		insert(node, at: index, emitStoreEvent: true)
+	}
+	
 	func removeNode(at index: Int) {
 		guard nodes.indices.contains(index) else { return }
-		let removed = nodes.remove(at: index)
-		storeActions.onRemove?(removed, index)
+		let node = nodes[index]
+		remove(node, at: index, emitStoreEvent: true)
 	}
-
+	
+	func notifyUpdate(of node: BlockNode) {
+		guard let idx = index(of: node) else { return }
+		sendStoreEvent(.updated(nodes[idx], at: idx))
+	}
+	
 	func notifyMerge(from source: BlockNode, into target: BlockNode) {
-		storeActions.onMerge?(source, target)
+		sendStoreEvent(.merged(source: source, target: target))
 	}
 }

@@ -3,7 +3,9 @@ import Testing
 
 @testable import SimpleBlockExample
 
-@MainActor  /// Tests that AutoSizingTextView(AppKit) captures and reports caret info correctly in EditorEvents.
+// MARK: - Tests that AutoSizingTextView(AppKit) captures and reports caret info correctly in EditorEvents.
+
+@MainActor
 @Suite("AutoSizingTextViewCaretInfoTests")
 struct AutoSizingTextViewCaretInfoTests {
 	@Test("Return at tail emits tail caret info")

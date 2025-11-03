@@ -24,3 +24,11 @@ final class BlockNode: Identifiable, Equatable {
 		l.id == r.id
 	}
 }
+
+extension BlockNode {
+	static let stubs: [BlockNode] = [
+		BlockNode(kind: .heading(level: 1), text: "제목"),
+		BlockNode(kind: .todo(checked: false), text: "체크1"),
+		BlockNode(kind: .todo(checked: false), text: "체크2 ")
+	]
+}
