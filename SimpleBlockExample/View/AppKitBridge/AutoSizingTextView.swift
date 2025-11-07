@@ -14,6 +14,16 @@ final class AutoSizingTextView: NSTextView {
 	var _decide: ((EditorEvent) -> EditCommand?)?
 	// 명령 적용 훅
 	var _apply: ((EditCommand) -> Void)?
+	
+	private var isNormalizingBaseline = false
+	private var baselineShift: CGFloat = 0 {
+		didSet {
+			if abs(oldValue - baselineShift) > 0.05 {
+				invalidateIntrinsicContentSize()
+				needsDisplay = true
+			}
+		}
+	}
 	// 입력 위치 정보
 	private func caretInfo() -> CaretInfo {
 		CaretInfo.make(from: self)
@@ -22,15 +32,22 @@ final class AutoSizingTextView: NSTextView {
 	// 자동 크기 조정
 	override func viewDidMoveToWindow() {
 		super.viewDidMoveToWindow()
+		layoutManager?.usesFontLeading = false
 		textContainer?.widthTracksTextView = true
 		textContainer?.containerSize = .init(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
 		textContainer?.lineFragmentPadding = 0
+		normalizeBaselineIfNeeded()
+	}
+	
+	override var textContainerOrigin: NSPoint {
+		NSPoint(x: textContainerInset.width, y: topInset)
 	}
 	
 	// 자동 높이 계산
 	override var intrinsicContentSize: NSSize {
 		guard let lm = layoutManager, let tc = textContainer else { return super.intrinsicContentSize }
 		lm.ensureLayout(for: tc)
+		normalizeBaselineIfNeeded()
 		
 		let glyphRange = lm.glyphRange(for: tc)
 		var layoutLineCount = 0
@@ -42,18 +59,16 @@ final class AutoSizingTextView: NSTextView {
 		let newlineCount = string.filter(\.isNewline).count + 1
 		let totalLines = max(layoutLineCount, newlineCount)
 		
-		var lineHeight: CGFloat = 0
-		if let f = font {
-			lineHeight = ceil(f.ascender - f.descender + f.leading)
-		}
+		let lineHeight = font?.blockLineHeight ?? 0
 		let totalHeight = CGFloat(totalLines) * lineHeight
-		let pad = textContainerInset.height * 2
-		return .init(width: NSView.noIntrinsicMetric, height: ceil(totalHeight + pad))
+		let padding = topInset + bottomInset
+		return .init(width: NSView.noIntrinsicMetric, height: ceil(totalHeight + padding))
 	}
 	
 	// 텍스트 변경 시 크기 갱신
 	override func didChangeText() {
 		super.didChangeText()
+		normalizeBaselineIfNeeded()
 		invalidateIntrinsicContentSize()
 	}
 	
@@ -85,6 +100,13 @@ final class AutoSizingTextView: NSTextView {
 // MARK: - 명령 적용 처리
 
 private extension AutoSizingTextView {
+	var topInset: CGFloat {
+		textContainerInset.height + baselineShift
+	}
+	
+	var bottomInset: CGFloat {
+		max(textContainerInset.height - baselineShift, 0)
+	}
 	
 	func applyCommand(_ command: EditCommand, groupTextEdits: Bool = false) {
 		let performEdits = {
@@ -366,6 +388,38 @@ private extension AutoSizingTextView {
 	func moveCaret(toUTF16 pos: Int) {
 		let clamped = max(0, min(pos, lengthUTF16))
 		setSelectedRange(NSRange(location: clamped, length: 0))
+	}
+}
+
+// MARK: - 기준선 정규화
+
+extension AutoSizingTextView {
+	func normalizeBaselineIfNeeded() {
+		guard !isNormalizingBaseline else { return }
+		guard let lm = layoutManager, let tc = textContainer, let font = font else { return }
+		
+		lm.ensureLayout(for: tc)
+		
+		let glyphCount = lm.numberOfGlyphs
+		let targetBaseline = font.blockBaselineOffset
+		let actualBaseline: CGFloat
+		if glyphCount > 0 {
+			actualBaseline = lm.location(forGlyphAt: 0).y
+		} else {
+			actualBaseline = targetBaseline
+		}
+		
+		let shift = targetBaseline - actualBaseline
+		let desiredShift: CGFloat = abs(shift) < 0.1 ? 0 : shift
+		
+		if abs(desiredShift - baselineShift) < 0.1 {
+			return
+		}
+		
+		isNormalizingBaseline = true
+		defer { isNormalizingBaseline = false }
+		
+		baselineShift = desiredShift
 	}
 }
 

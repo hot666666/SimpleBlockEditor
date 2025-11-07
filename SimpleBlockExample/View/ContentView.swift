@@ -20,7 +20,7 @@ struct ContentView: View {
 			ForEach(manager.nodes) { node in
 				BlockRowEditor(manager: manager, node: node)
 			}
-			.listRowInsets(.none)
+			.listRowInsets(EdgeInsets())
 			.listRowSeparator(.hidden)
 		}
 		.listStyle(.plain)

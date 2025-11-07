@@ -11,7 +11,7 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 	let nodeID: UUID
 	@Binding var text: String
 	var font: NSFont
-	var textInsets: NSSize = .init(width: 0, height: 2)
+	var textInsets: NSSize = .init(width: 0, height: 6)
 
 	// SwiftUI에서 의사결정 내려주는 훅 (없으면 기본 nil 반환)
 	var onDecide: (EditorEvent) -> EditCommand? = { _ in nil }
@@ -38,6 +38,8 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 		tv._apply = onApply
 		// 레지스트리에 등록
 		EditorRegistry.shared.register(nodeID: nodeID, view: tv)
+		
+		tv.normalizeBaselineIfNeeded()
 
 		return tv
 	}
@@ -69,6 +71,8 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 			tv.textContainerInset = textInsets
 			tv.invalidateIntrinsicContentSize()
 		}
+		
+		tv.normalizeBaselineIfNeeded()
 	}
 
 	func makeCoordinator() -> Coordinator { Coordinator(self) }

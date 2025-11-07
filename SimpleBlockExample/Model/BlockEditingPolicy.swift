@@ -60,11 +60,11 @@ struct DefaultBlockEditingPolicy: BlockEditingPolicy {
 
 private extension DefaultBlockEditingPolicy {
 	func handleSpace(info: CaretInfo, node: BlockNode, context: BlockEditingContext) -> EditCommand? {
-		guard let (match, remove) = matchLeadingTriggerSpace(text: node.text, caretUTF16: info.utf16) else {
+		guard let res = matchSpaceTrigger(text: node.text, caretUTF16: info.utf16) else {
 			return nil
 		}
 
-		switch match {
+		switch res.type {
 		case .heading(let level):
 			node.kind = .heading(level: level)
 		case .bullet:
@@ -74,7 +74,7 @@ private extension DefaultBlockEditingPolicy {
 		}
 		context.notifyUpdate(of: node)
 
-		return EditCommand(removePrefixUTF16: remove, setCaretUTF16: 0)
+		return EditCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
 	}
 
 	func handleEnter(info: CaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContext) -> EditCommand? {
@@ -165,5 +165,95 @@ private extension DefaultBlockEditingPolicy {
 		guard info.isAtTail, let next = context.nextNode(of: node) else { return nil }
 
 		return EditCommand(requestFocusChange: .otherNode(id: next.id, caret: 0))
+	}
+}
+
+// MARK: - Matching leading trigger space
+
+private extension DefaultBlockEditingPolicy {
+	struct SpaceTriggerMatch {
+		let type: SpaceTriggerType
+		let removeUTF16: Int
+	}
+	
+	enum SpaceTriggerType {
+		case heading(Int)   // 1...3
+		case bullet         // -, *
+		case todo(Bool)     // checked
+	}
+	
+	func matchSpaceTrigger(
+		text: String,
+		caretUTF16: Int
+	) -> SpaceTriggerMatch? {
+		// 삭제 범위 = 트리거 길이 + 공백1(현재 입력)
+		let remove = caretUTF16+1
+		let u = text.utf16
+		let n = u.count
+		
+		// 상수
+		let SPACE: UInt16 = 32  // ' '
+		let HASH: UInt16 = 35   // '#'
+		let STAR: UInt16 = 42   // '*'
+		let DASH: UInt16 = 45   // '-'
+		let LBR: UInt16 = 91    // '['
+		let RBR: UInt16 = 93    // ']'
+		let X:   UInt16 = 120  // 'x'
+		
+		// bounds check는 케이스마다 guard로 보장
+		func c(_ off: Int) -> UInt16 {
+			u[u.index(u.startIndex, offsetBy: off)]
+		}
+		
+		switch caretUTF16 {
+		case 1:
+			guard n >= 1 else { return nil }
+			let c0 = c(0)
+			// "# "
+			if c0 == HASH {
+				return SpaceTriggerMatch(type: .heading(1), removeUTF16: remove)
+			}
+			// "- " || "* "
+			if c0 == DASH || c0 == STAR {
+				return SpaceTriggerMatch(type: .bullet, removeUTF16: remove)
+			}
+			return nil
+			
+		case 2:
+			guard n >= 2 else { return nil }
+			let c0 = c(0)
+			let c1 = c(1)
+			// "## "
+			if c0 == HASH && c1 == HASH {
+				return SpaceTriggerMatch(type: .heading(2), removeUTF16: remove)
+			}
+			// "[] "
+			if c0 == LBR && c1 == RBR {
+				return SpaceTriggerMatch(type: .todo(false), removeUTF16: remove)
+			}
+			return nil
+			
+		case 3:
+			guard n >= 3 else { return nil }
+			let c0 = c(0)
+			let c1 = c(1)
+			let c2 = c(2)
+			// "### "
+			if c0 == HASH && c1 == HASH && c2 == HASH {
+				return SpaceTriggerMatch(type: .heading(3), removeUTF16: remove)
+			}
+			// "[ ] "
+			if c0 == LBR && c1 == SPACE && c2 == RBR {
+				return SpaceTriggerMatch(type: .todo(false), removeUTF16: remove)
+			}
+			// "[x] "
+			if c0 == LBR && c1 == X && c2 == RBR {
+				return SpaceTriggerMatch(type: .todo(true), removeUTF16: remove)
+			}
+			return nil
+			
+		default:
+			return nil
+		}
 	}
 }
