@@ -64,14 +64,7 @@ private extension DefaultBlockEditingPolicy {
 			return nil
 		}
 
-		switch res.type {
-		case .heading(let level):
-			node.kind = .heading(level: level)
-		case .bullet:
-			node.kind = .bullet
-		case .todo(let checked):
-			node.kind = .todo(checked: checked)
-		}
+		node.kind = res.kind
 		context.notifyUpdate(of: node)
 
 		return EditCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
@@ -171,34 +164,22 @@ private extension DefaultBlockEditingPolicy {
 // MARK: - Matching leading trigger space
 
 private extension DefaultBlockEditingPolicy {
+	// 트리거 매칭 결과
 	struct SpaceTriggerMatch {
-		let type: SpaceTriggerType
+		let kind: BlockKind
 		let removeUTF16: Int
 	}
 	
-	enum SpaceTriggerType {
-		case heading(Int)   // 1...3
-		case bullet         // -, *
-		case todo(Bool)     // checked
-	}
-	
+	// 공백 트리거 매칭
 	func matchSpaceTrigger(
 		text: String,
 		caretUTF16: Int
 	) -> SpaceTriggerMatch? {
 		// 삭제 범위 = 트리거 길이 + 공백1(현재 입력)
 		let remove = caretUTF16+1
+		
 		let u = text.utf16
 		let n = u.count
-		
-		// 상수
-		let SPACE: UInt16 = 32  // ' '
-		let HASH: UInt16 = 35   // '#'
-		let STAR: UInt16 = 42   // '*'
-		let DASH: UInt16 = 45   // '-'
-		let LBR: UInt16 = 91    // '['
-		let RBR: UInt16 = 93    // ']'
-		let X:   UInt16 = 120  // 'x'
 		
 		// bounds check는 케이스마다 guard로 보장
 		func c(_ off: Int) -> UInt16 {
@@ -210,12 +191,12 @@ private extension DefaultBlockEditingPolicy {
 			guard n >= 1 else { return nil }
 			let c0 = c(0)
 			// "# "
-			if c0 == HASH {
-				return SpaceTriggerMatch(type: .heading(1), removeUTF16: remove)
+			if c0 == UTF16Char.HASH {
+				return SpaceTriggerMatch(kind: .heading(level: 1), removeUTF16: remove)
 			}
 			// "- " || "* "
-			if c0 == DASH || c0 == STAR {
-				return SpaceTriggerMatch(type: .bullet, removeUTF16: remove)
+			if c0 == UTF16Char.DASH || c0 == UTF16Char.STAR {
+				return SpaceTriggerMatch(kind: .bullet, removeUTF16: remove)
 			}
 			return nil
 			
@@ -224,12 +205,12 @@ private extension DefaultBlockEditingPolicy {
 			let c0 = c(0)
 			let c1 = c(1)
 			// "## "
-			if c0 == HASH && c1 == HASH {
-				return SpaceTriggerMatch(type: .heading(2), removeUTF16: remove)
+			if c0 == UTF16Char.HASH && c1 == UTF16Char.HASH {
+				return SpaceTriggerMatch(kind: .heading(level: 2), removeUTF16: remove)
 			}
 			// "[] "
-			if c0 == LBR && c1 == RBR {
-				return SpaceTriggerMatch(type: .todo(false), removeUTF16: remove)
+			if c0 == UTF16Char.LBR && c1 == UTF16Char.RBR {
+				return SpaceTriggerMatch(kind: .todo(checked:false), removeUTF16: remove)
 			}
 			return nil
 			
@@ -239,16 +220,16 @@ private extension DefaultBlockEditingPolicy {
 			let c1 = c(1)
 			let c2 = c(2)
 			// "### "
-			if c0 == HASH && c1 == HASH && c2 == HASH {
-				return SpaceTriggerMatch(type: .heading(3), removeUTF16: remove)
+			if c0 == UTF16Char.HASH && c1 == UTF16Char.HASH && c2 == UTF16Char.HASH {
+				return SpaceTriggerMatch(kind: .heading(level: 3), removeUTF16: remove)
 			}
 			// "[ ] "
-			if c0 == LBR && c1 == SPACE && c2 == RBR {
-				return SpaceTriggerMatch(type: .todo(false), removeUTF16: remove)
+			if c0 == UTF16Char.LBR && c1 == UTF16Char.SPACE && c2 == UTF16Char.RBR {
+				return SpaceTriggerMatch(kind: .todo(checked:false), removeUTF16: remove)
 			}
 			// "[x] "
-			if c0 == LBR && c1 == X && c2 == RBR {
-				return SpaceTriggerMatch(type: .todo(true), removeUTF16: remove)
+			if c0 == UTF16Char.LBR && c1 == UTF16Char.X && c2 == UTF16Char.RBR {
+				return SpaceTriggerMatch(kind: .todo(checked:true), removeUTF16: remove)
 			}
 			return nil
 			
@@ -256,4 +237,16 @@ private extension DefaultBlockEditingPolicy {
 			return nil
 		}
 	}
+}
+
+// MARK: - UTF16 Char Codes
+
+enum UTF16Char {
+	static let SPACE: UInt16 = 32  // ' '
+	static let HASH: UInt16 = 35   // '#'
+	static let STAR: UInt16 = 42   // '*'
+	static let DASH: UInt16 = 45   // '-'
+	static let LBR: UInt16 = 91    // '['
+	static let RBR: UInt16 = 93    // ']'
+	static let X:   UInt16 = 120  // 'x'
 }

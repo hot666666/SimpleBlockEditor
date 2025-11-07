@@ -26,6 +26,7 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 		tv.drawsBackground = false
 		tv.font = font
 		tv.textColor = .labelColor
+		tv.insertionPointColor = .white
 		tv.textContainerInset = textInsets
 		tv.allowsUndo = true
 		tv.delegate = context.coordinator
