@@ -9,7 +9,7 @@ import SwiftUI
 
 @Observable
 final class BlockNode: Identifiable, Equatable {
-	let id = UUID()
+	nonisolated let id = UUID()
 	var kind: BlockKind
 	var text: String
 	var listNumber: Int?

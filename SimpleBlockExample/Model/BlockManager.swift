@@ -8,7 +8,7 @@
 import SwiftUI
 
 @Observable
-final class BlockManager {
+final class BlockManager: @unchecked Sendable {
 	private let policy: any BlockEditingPolicy
 	private let store: BlockStore?
 	
@@ -19,7 +19,7 @@ final class BlockManager {
 	
 	init(
 		store: BlockStore? = nil,
-		policy: any BlockEditingPolicy = DefaultBlockEditingPolicy(),
+		policy: any BlockEditingPolicy = DefaultBlockEditingPolicy()
 	) {
 		self.policy = policy
 		self.store = store
@@ -53,11 +53,6 @@ final class BlockManager {
 	func appendNode(_ node: BlockNode) {
 		insert(node, at: nodes.count, emitStoreEvent: true)
 	}
-	
-	func replaceAll(with defaultNode: [BlockNode]) {
-		nodes = defaultNode
-		sendStoreEvent(.replaced(defaultNode))
-	}
 }
 
 // MARK: - Store bootstrap
@@ -69,13 +64,11 @@ private extension BlockManager {
 		let initial = await store.load()
 		
 		await MainActor.run {
-			if !initial.isEmpty {
+			if initial.isEmpty {
+				sendStoreEvent(.replaced(nodes))
+			} else {
 				self.nodes = initial
 			}
-		}
-		
-		if initial.isEmpty {
-			sendStoreEvent(.replaced(nodes))
 		}
 		
 		for await event in store.updates() {
@@ -92,7 +85,6 @@ private extension BlockManager {
 		}
 	}
 	
-	@MainActor
 	func handleExternal(_ event: BlockStoreEvent) {
 		switch event {
 		case .inserted(let node, at: let index):

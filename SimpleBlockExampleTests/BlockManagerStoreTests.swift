@@ -141,36 +141,6 @@ struct BlockManagerStoreTests {
 		#expect(target.id == head.id)
 	}
 
-	@Test("replaceAll emits store replacement")
-	func replaceAllEmitsStoreReplacement() async {
-		let initial = BlockNode(kind: .paragraph, text: "Old")
-		let store = SpyBlockStore(load: [initial])
-		let manager = BlockManager(
-			store: store,
-			policy: DefaultBlockEditingPolicy()
-		)
-
-		_ = await store.waitForLoad()
-		var iterator = store.eventsIterator()
-		let newNodes = [
-			BlockNode(kind: .heading(level: 1), text: "New title"),
-			BlockNode(kind: .paragraph, text: "Body")
-		]
-		manager.replaceAll(with: newNodes)
-
-		guard let event = await awaitNext(&iterator) else {
-			Issue.record("Expected replaced event")
-			return
-		}
-
-		guard case let .replaced(replaced) = event else {
-			Issue.record("Expected replaced event")
-			return
-		}
-
-		#expect(replaced.map(\.id) == newNodes.map(\.id))
-	}
-
 	@Test("empty store keeps default node and emits update")
 	func emptyStoreKeepsDefaultNodeAndEmitsUpdate() async {
 		let store = SpyBlockStore(load: [])

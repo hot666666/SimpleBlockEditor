@@ -9,9 +9,9 @@ import Testing
 @Suite("BlockManagerPolicyTests")
 struct BlockManagerPolicyTests {
 	@Test("Space trigger converts heading and removes prefix")
-	func spaceTriggerConvertsHeadingAndRemovesPrefix() {
+	func spaceTriggerConvertsHeadingAndRemovesPrefix() async {
 		let node = BlockNode(kind: .paragraph, text: "#")
-		let manager = makeManager(nodes: [node])
+		let manager = await makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 1, string: "#")
 
@@ -26,9 +26,9 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Space trigger converts todo state")
-	func spaceTriggerConvertsTodoState() {
+	func spaceTriggerConvertsTodoState() async {
 		let node = BlockNode(kind: .paragraph, text: "[x]")
-		let manager = makeManager(nodes: [node])
+		let manager = await makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 3, string: "[x]")
 
@@ -43,9 +43,9 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Enter at tail inserts sibling and focuses it")
-	func enterAtTailInsertsSiblingAndFocusesIt() {
+	func enterAtTailInsertsSiblingAndFocusesIt() async {
 		let node = BlockNode(kind: .todo(checked: false), text: "Task")
-		let manager = makeManager(nodes: [node])
+		let manager = await makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 4, string: "Task")
 
@@ -62,9 +62,9 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Enter inside splits node and keeps tail text")
-	func enterInsideSplitsNodeAndKeepsTailText() {
+	func enterInsideSplitsNodeAndKeepsTailText() async {
 		let node = BlockNode(kind: .paragraph, text: "HelloWorld")
-		let manager = makeManager(nodes: [node])
+		let manager = await makeManager(nodes: [node])
 
 		let info = singleLineCaret(location: 5, string: "HelloWorld")
 
@@ -83,9 +83,9 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Delete at start resets style to paragraph")
-	func deleteAtStartResetsStyleToParagraph() {
+	func deleteAtStartResetsStyleToParagraph() async {
 		let node = BlockNode(kind: .heading(level: 2), text: "Title")
-		let manager = makeManager(nodes: [node])
+		let manager = await makeManager(nodes: [node])
 
 		guard let command = manager.decide(.deleteAtStart, for: node) else {
 			Issue.record("Expected EditCommand for style reset")
@@ -97,10 +97,10 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Delete at start merges with previous paragraph")
-	func deleteAtStartMergesWithPreviousParagraph() {
+	func deleteAtStartMergesWithPreviousParagraph() async {
 		let prev = BlockNode(kind: .paragraph, text: "Hello")
 		let node = BlockNode(kind: .paragraph, text: "World")
-		let manager = makeManager(nodes: [prev, node])
+		let manager = await makeManager(nodes: [prev, node])
 
 		guard let command = manager.decide(.deleteAtStart, for: node) else {
 			Issue.record("Expected EditCommand for merge")
@@ -114,10 +114,10 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Arrow left at start focuses previous node end")
-	func arrowLeftAtStartFocusesPreviousNodeEnd() {
+	func arrowLeftAtStartFocusesPreviousNodeEnd() async {
 		let prev = BlockNode(kind: .paragraph, text: "Prev")
 		let node = BlockNode(kind: .paragraph, text: "Current")
-		let manager = makeManager(nodes: [prev, node])
+		let manager = await makeManager(nodes: [prev, node])
 
 		let info = singleLineCaret(location: 0, string: "Current")
 
@@ -130,10 +130,10 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Arrow right at tail focuses next node")
-	func arrowRightAtTailFocusesNextNode() {
+	func arrowRightAtTailFocusesNextNode() async {
 		let node = BlockNode(kind: .paragraph, text: "Current")
 		let next = BlockNode(kind: .paragraph, text: "Next")
-		let manager = makeManager(nodes: [node, next])
+		let manager = await makeManager(nodes: [node, next])
 
 		let info = singleLineCaret(location: 7, string: "Current")
 
@@ -146,10 +146,10 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Arrow up jumps to previous multi-line node tail")
-	func arrowUpJumpsToPreviousMultilineNodeTail() {
+	func arrowUpJumpsToPreviousMultilineNodeTail() async {
 		let prev = BlockNode(kind: .paragraph, text: "Hello\nWorld")
 		let node = BlockNode(kind: .paragraph, text: "Current")
-		let manager = makeManager(nodes: [prev, node])
+		let manager = await makeManager(nodes: [prev, node])
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
@@ -163,10 +163,10 @@ struct BlockManagerPolicyTests {
 	}
 
 	@Test("Arrow down keeps horizontal column when possible")
-	func arrowDownKeepsHorizontalColumnWhenPossible() {
+	func arrowDownKeepsHorizontalColumnWhenPossible() async {
 		let node = BlockNode(kind: .paragraph, text: "Current")
 		let next = BlockNode(kind: .paragraph, text: "Ok")
-		let manager = makeManager(nodes: [node, next])
+		let manager = await makeManager(nodes: [node, next])
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
@@ -237,6 +237,23 @@ struct BlockManagerPolicyTests {
 
 // MARK: - Helpers
 
+private func singleLineCaret(location: Int, string: String, selectionLength: Int = 0) -> CaretInfo {
+	let length = (string as NSString).length
+	let selection = NSRange(location: location, length: selectionLength)
+	return CaretInfo(
+		selection: selection,
+		utf16: location,
+		grapheme: location,
+		stringLength: string.count,
+		utf16Length: length,
+		currentLineIndex: 0,
+		totalLineCount: 1,
+		lineRangeUTF16: NSRange(location: 0, length: length),
+		columnUTF16: location,
+		columnGrapheme: location
+	)
+}
+
 private final class MockContext: BlockEditingContext {
 	var nodes: [BlockNode]
 	var insertedNodes: [(node: BlockNode, index: Int)] = []
@@ -283,26 +300,33 @@ private final class MockContext: BlockEditingContext {
 	}
 }
 
-private func singleLineCaret(location: Int, string: String, selectionLength: Int = 0) -> CaretInfo {
-	let length = (string as NSString).length
-	let selection = NSRange(location: location, length: selectionLength)
-	return CaretInfo(
-		selection: selection,
-		utf16: location,
-		grapheme: location,
-		stringLength: string.count,
-		utf16Length: length,
-		currentLineIndex: 0,
-		totalLineCount: 1,
-		lineRangeUTF16: NSRange(location: 0, length: length),
-		columnUTF16: location,
-		columnGrapheme: location
-	)
+private final class MockBlockStore: BlockStore {
+	private let initialNodes: [BlockNode]
+	
+	init(initialNodes: [BlockNode]) {
+		self.initialNodes = initialNodes
+	}
+	
+	func load() async -> [BlockNode] {
+		return initialNodes
+	}
+	
+	func updates() -> AsyncStream<BlockStoreEvent> {
+		AsyncStream { continuation in
+			continuation.finish()
+		}
+	}
+	
+	func apply(_ event: BlockStoreEvent) async {}
 }
 
 @MainActor
-private func makeManager(nodes: [BlockNode]) -> BlockManager {
-	let manager = BlockManager(policy: DefaultBlockEditingPolicy())
-	manager.replaceAll(with: nodes)
+private func makeManager(nodes: [BlockNode]) async -> BlockManager {
+	let store = MockBlockStore(initialNodes: nodes)
+	let manager = BlockManager(store: store, policy: DefaultBlockEditingPolicy())
+	
+	// 데이터 로드 대기
+	try? await Task.sleep(nanoseconds: 250_000_000)
+	
 	return manager
 }
