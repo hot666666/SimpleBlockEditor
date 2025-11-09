@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 // MARK: - BlockRowEditor
 
@@ -42,20 +43,26 @@ struct BlockRowEditor: View {
 		Task {
 			await debouncer.cancel()
 			if isPending {
-				manager.notifyUpdate(of: node)
 				isPending = false
 			}
+			manager.notifyUpdate(of: node)
 		}
 	}
 	
+	private func toggleTodo(_ checked: Bool) {
+		node.kind = .todo(checked: !checked)
+		flushPending()
+	}
+	
 	var body: some View {
+		let editorStyle = EditorStyle(font: node.kind.font, textInsets: layout.textInsets)
+		
 		HStack(alignment: .top, spacing: layout.gutterSpacing) {
 			gutterView()
 			AutoGrowTextEditor(
 				nodeID: node.id,
 				text: $node.text,
-				font: node.kind.font,
-				textInsets: layout.textInsets,
+				style: editorStyle,
 				onDecide: decide,
 				onApply: send
 			)
@@ -95,9 +102,7 @@ private extension BlockRowEditor {
 		case .todo(let checked):
 			defaultGutter {
 				Button {
-					node.kind = .todo(checked: !checked)
-					flushPending()
-					manager.notifyUpdate(of: node)
+					toggleTodo(checked)
 				} label: {
 					Image(systemName: checked ? "checkmark.square.fill" : "square")
 						.font(.system(size: 14, weight: .medium))

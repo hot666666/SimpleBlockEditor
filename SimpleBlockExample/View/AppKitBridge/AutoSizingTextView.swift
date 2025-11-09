@@ -7,23 +7,22 @@
 
 import AppKit
 
+protocol TextEditorInteractionDelegate: AnyObject {
+	func textEditor(_ textView: AutoSizingTextView, decide event: EditorEvent) -> EditCommand?
+	func textEditor(_ textView: AutoSizingTextView, didRequestFocusChange change: FocusChange)
+	func textEditor(_ textView: AutoSizingTextView, willMoveToWindow newWindow: NSWindow?)
+}
+
 final class AutoSizingTextView: NSTextView {
-	// 노드 식별자
-	var nodeID: UUID?
-	// 명령 결정 훅
-	var _decide: ((EditorEvent) -> EditCommand?)?
-	// 명령 적용 훅
-	var _apply: ((EditCommand) -> Void)?
+	weak var interactionDelegate: TextEditorInteractionDelegate?
 	
-	private var isNormalizingBaseline = false
-	private var baselineShift: CGFloat = 0 {
-		didSet {
-			if abs(oldValue - baselineShift) > 0.05 {
-				invalidateIntrinsicContentSize()
-				needsDisplay = true
-			}
-		}
+	// 사용자가 편집을 취소할 수 있게 해주는 Undo 그룹화 헬퍼
+	func withUndoGroup(_ body: () -> Void) {
+		undoManager?.beginUndoGrouping()
+		body()
+		undoManager?.endUndoGrouping()
 	}
+	
 	// 입력 위치 정보
 	private func caretInfo() -> CaretInfo {
 		CaretInfo.make(from: self)
@@ -32,43 +31,32 @@ final class AutoSizingTextView: NSTextView {
 	// 자동 크기 조정
 	override func viewDidMoveToWindow() {
 		super.viewDidMoveToWindow()
-		layoutManager?.usesFontLeading = false
+		layoutManager?.usesFontLeading = true
 		textContainer?.widthTracksTextView = true
 		textContainer?.containerSize = .init(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
 		textContainer?.lineFragmentPadding = 0
-		normalizeBaselineIfNeeded()
-	}
-	
-	override var textContainerOrigin: NSPoint {
-		NSPoint(x: textContainerInset.width, y: topInset)
 	}
 	
 	// 자동 높이 계산
 	override var intrinsicContentSize: NSSize {
 		guard let lm = layoutManager, let tc = textContainer else { return super.intrinsicContentSize }
 		lm.ensureLayout(for: tc)
-		normalizeBaselineIfNeeded()
 		
-		let glyphRange = lm.glyphRange(for: tc)
-		var layoutLineCount = 0
-		lm.enumerateLineFragments(forGlyphRange: glyphRange) { _, _, _, _, _ in
-			layoutLineCount += 1
+		let usedRect = lm.usedRect(for: tc)
+		let glyphHeight = usedRect.height
+		let contentHeight: CGFloat
+		if glyphHeight.isNormal && glyphHeight > 0 {
+			contentHeight = glyphHeight
+		} else {
+			contentHeight = font?.blockLineHeight ?? 0
 		}
-		if layoutLineCount == 0 { layoutLineCount = 1 }
-		
-		let newlineCount = string.filter(\.isNewline).count + 1
-		let totalLines = max(layoutLineCount, newlineCount)
-		
-		let lineHeight = font?.blockLineHeight ?? 0
-		let totalHeight = CGFloat(totalLines) * lineHeight
-		let padding = topInset + bottomInset
-		return .init(width: NSView.noIntrinsicMetric, height: ceil(totalHeight + padding))
+		let padding = textContainerInset.height * 2
+		return .init(width: NSView.noIntrinsicMetric, height: ceil(contentHeight + padding))
 	}
 	
 	// 텍스트 변경 시 크기 갱신
 	override func didChangeText() {
 		super.didChangeText()
-		normalizeBaselineIfNeeded()
 		invalidateIntrinsicContentSize()
 	}
 	
@@ -91,23 +79,13 @@ final class AutoSizingTextView: NSTextView {
 	// 뷰 제거 시 레지스트리에서 해제
 	override func viewWillMove(toWindow newWindow: NSWindow?) {
 		super.viewWillMove(toWindow: newWindow)
-		if newWindow == nil, let id = nodeID {
-			EditorRegistry.shared.unregister(nodeID: id)
-		}
+		interactionDelegate?.textEditor(self, willMoveToWindow: newWindow)
 	}
 }
 
 // MARK: - 명령 적용 처리
 
 private extension AutoSizingTextView {
-	var topInset: CGFloat {
-		textContainerInset.height + baselineShift
-	}
-	
-	var bottomInset: CGFloat {
-		max(textContainerInset.height - baselineShift, 0)
-	}
-	
 	func applyCommand(_ command: EditCommand, groupTextEdits: Bool = false) {
 		let performEdits = {
 			self.applyTextEdits(from: command)
@@ -131,7 +109,8 @@ private extension AutoSizingTextView {
 		case .left: event = .arrowLeft(info)
 		case .right: event = .arrowRight(info)
 		}
-		guard let cmd = _decide?(event) else { return false }
+		guard let delegate = interactionDelegate,
+					let cmd = delegate.textEditor(self, decide: event) else { return false }
 		applyCommand(cmd)
 		return true
 	}
@@ -155,10 +134,7 @@ private extension AutoSizingTextView {
 	
 	func applyFocusChange(from command: EditCommand) {
 		guard let change = command.requestFocusChange else { return }
-		guard case let .otherNode(id, caret) = change else { return }
-		DispatchQueue.main.async {
-			EditorRegistry.shared.makeFirstResponder(nodeID: id, caret: caret)
-		}
+		interactionDelegate?.textEditor(self, didRequestFocusChange: change)
 	}
 }
 
@@ -167,7 +143,7 @@ private extension AutoSizingTextView {
 extension AutoSizingTextView {
 	override func mouseDown(with event: NSEvent) {
 		// 클릭 시 이전 포커스 해제 명령 적용
-		_apply?(EditCommand(requestFocusChange: .clear))
+		interactionDelegate?.textEditor(self, didRequestFocusChange: .clear)
 		// 편집 가능 상태로 전환
 		isEditable = true
 		super.mouseDown(with: event)
@@ -242,7 +218,6 @@ extension AutoSizingTextView {
 // MARK: - Handlers
 
 private extension AutoSizingTextView {
-	
 	enum ArrowDir { case up, down, left, right }
 	
 	enum Key: UInt16 {
@@ -260,7 +235,8 @@ private extension AutoSizingTextView {
 	func handleEnter() {
 		let info = caretInfo()
 		
-		if let cmd = _decide?(.enter(info, info.isAtTail)) {
+		if let delegate = interactionDelegate,
+			 let cmd = delegate.textEditor(self, decide: .enter(info, info.isAtTail)) {
 			applyCommand(cmd)
 		} else {
 			super.insertNewline(nil)
@@ -274,7 +250,8 @@ private extension AutoSizingTextView {
 	
 	// Backspace 입력 처리
 	func handleDeleteBackward() {
-		if let cmd = _decide?(.deleteAtStart) {
+		if let delegate = interactionDelegate,
+			 let cmd = delegate.textEditor(self, decide: .deleteAtStart) {
 			applyCommand(cmd)
 		} else {
 			super.deleteBackward(nil)
@@ -291,7 +268,8 @@ private extension AutoSizingTextView {
 			super.insertText(" ", replacementRange: range)
 		}
 		
-		guard let cmd = _decide?(.space(info)) else { return }
+		guard let delegate = interactionDelegate,
+					let cmd = delegate.textEditor(self, decide: .space(info)) else { return }
 		
 		// 2) 정책적 후처리: 공통 command 경로로 처리
 		applyCommand(cmd, groupTextEdits: true)
@@ -349,14 +327,6 @@ private extension AutoSizingTextView {
 // MARK: - 편집 헬퍼
 
 private extension AutoSizingTextView {
-	
-	// 사용자가 편집을 취소할 수 있게 해주는 Undo 그룹화 헬퍼
-	func withUndoGroup(_ body: () -> Void) {
-		undoManager?.beginUndoGrouping()
-		body()
-		undoManager?.endUndoGrouping()
-	}
-	
 	// 현재 텍스트의 UTF-16 코드 유닛 길이
 	var lengthUTF16: Int { (self.string as NSString).length }
 	
@@ -388,38 +358,6 @@ private extension AutoSizingTextView {
 	func moveCaret(toUTF16 pos: Int) {
 		let clamped = max(0, min(pos, lengthUTF16))
 		setSelectedRange(NSRange(location: clamped, length: 0))
-	}
-}
-
-// MARK: - 기준선 정규화
-
-extension AutoSizingTextView {
-	func normalizeBaselineIfNeeded() {
-		guard !isNormalizingBaseline else { return }
-		guard let lm = layoutManager, let tc = textContainer, let font = font else { return }
-		
-		lm.ensureLayout(for: tc)
-		
-		let glyphCount = lm.numberOfGlyphs
-		let targetBaseline = font.blockBaselineOffset
-		let actualBaseline: CGFloat
-		if glyphCount > 0 {
-			actualBaseline = lm.location(forGlyphAt: 0).y
-		} else {
-			actualBaseline = targetBaseline
-		}
-		
-		let shift = targetBaseline - actualBaseline
-		let desiredShift: CGFloat = abs(shift) < 0.1 ? 0 : shift
-		
-		if abs(desiredShift - baselineShift) < 0.1 {
-			return
-		}
-		
-		isNormalizingBaseline = true
-		defer { isNormalizingBaseline = false }
-		
-		baselineShift = desiredShift
 	}
 }
 

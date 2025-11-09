@@ -12,10 +12,12 @@ struct AutoSizingTextViewCaretInfoTests {
 	func returnKeyAtTailEmitsTailCaretInfo() {
 		let textView = makeTextView(text: "Hello", selection: NSRange(location: 5, length: 0))
 		var captured: EditorEvent?
-		textView._decide = { event in
+		let delegate = InteractionProbe()
+		delegate.decideHandler = { event in
 			captured = event
 			return nil
 		}
+		textView.interactionDelegate = delegate
 
 		guard let event = makeKeyEvent(keyCode: 36, characters: "\r") else {
 			Issue.record("Failed to create return key event")
@@ -48,10 +50,12 @@ struct AutoSizingTextViewCaretInfoTests {
 	func returnKeyInsideTextCapturesCaretMetrics() {
 		let textView = makeTextView(text: "Hello world", selection: NSRange(location: 5, length: 0))
 		var captured: EditorEvent?
-		textView._decide = { event in
+		let delegate = InteractionProbe()
+		delegate.decideHandler = { event in
 			captured = event
 			return nil
 		}
+		textView.interactionDelegate = delegate
 
 		guard let event = makeKeyEvent(keyCode: 36, characters: "\r") else {
 			Issue.record("Failed to create return key event")
@@ -84,10 +88,12 @@ struct AutoSizingTextViewCaretInfoTests {
 	func spaceKeyUsesPreInsertCaretSnapshot() {
 		let textView = makeTextView(text: "##", selection: NSRange(location: 2, length: 0))
 		var captured: EditorEvent?
-		textView._decide = { event in
+		let delegate = InteractionProbe()
+		delegate.decideHandler = { event in
 			captured = event
 			return nil
 		}
+		textView.interactionDelegate = delegate
 
 		guard let event = makeKeyEvent(keyCode: 49, characters: " ") else {
 			Issue.record("Failed to create space key event")
@@ -121,10 +127,12 @@ struct AutoSizingTextViewCaretInfoTests {
 	func leftArrowAtStartReportsStartCaretInfo() {
 		let textView = makeTextView(text: "Hello", selection: NSRange(location: 0, length: 0))
 		var captured: EditorEvent?
-		textView._decide = { event in
+		let delegate = InteractionProbe()
+		delegate.decideHandler = { event in
 			captured = event
 			return nil
 		}
+		textView.interactionDelegate = delegate
 
 		let leftArrow = String(UnicodeScalar(Int(NSLeftArrowFunctionKey))!)
 		guard let event = makeKeyEvent(keyCode: 123, characters: leftArrow) else {
@@ -158,10 +166,12 @@ struct AutoSizingTextViewCaretInfoTests {
 	func arrowUpOnFirstLineExposesTotalLines() {
 		let textView = makeTextView(text: "Hello\nWorld", selection: NSRange(location: 1, length: 0))
 		var captured: EditorEvent?
-		textView._decide = { event in
+		let delegate = InteractionProbe()
+		delegate.decideHandler = { event in
 			captured = event
 			return nil
 		}
+		textView.interactionDelegate = delegate
 
 		let upArrow = String(UnicodeScalar(Int(NSUpArrowFunctionKey))!)
 		guard let event = makeKeyEvent(keyCode: 126, characters: upArrow) else {
@@ -222,53 +232,71 @@ private func makeKeyEvent(keyCode: UInt16, characters: String, modifiers: NSEven
 	)
 }
 
-	// Simple, one-line cases like “Hello” or “##” before space
-	private func expectSingleLineCaret(
-		_ info: CaretInfo,
-		selection: NSRange,
-		caret: Int,
-		stringLength: Int,
-		isTail: Bool
-	) {
-		#expect(info.selection == selection)
-		#expect(info.utf16 == caret)
-		#expect(info.grapheme == caret)
-		#expect(info.stringLength == stringLength)
-		#expect(info.utf16Length == stringLength)
-		#expect(info.currentLineIndex == 0)
-		#expect(info.totalLineCount == 1)
-		#expect(info.lineRangeUTF16 == NSRange(location: 0, length: stringLength))
-		#expect(info.columnUTF16 == caret)
-		#expect(info.columnGrapheme == caret)
-		if isTail {
-			#expect(info.isAtTail)
-		} else {
-			#expect(!info.isAtTail)
-		}
+// Simple, one-line cases like “Hello” or “##” before space
+private func expectSingleLineCaret(
+	_ info: CaretInfo,
+	selection: NSRange,
+	caret: Int,
+	stringLength: Int,
+	isTail: Bool
+) {
+	#expect(info.selection == selection)
+	#expect(info.utf16 == caret)
+	#expect(info.grapheme == caret)
+	#expect(info.stringLength == stringLength)
+	#expect(info.utf16Length == stringLength)
+	#expect(info.currentLineIndex == 0)
+	#expect(info.totalLineCount == 1)
+	#expect(info.lineRangeUTF16 == NSRange(location: 0, length: stringLength))
+	#expect(info.columnUTF16 == caret)
+	#expect(info.columnGrapheme == caret)
+	if isTail {
+		#expect(info.isAtTail)
+	} else {
+		#expect(!info.isAtTail)
+	}
+}
+
+// Multi-line scenarios (e.g., “Hello\nWorld”)
+private func expectCaret(
+	_ info: CaretInfo,
+	selection: NSRange,
+	utf16: Int,
+	grapheme: Int,
+	stringLength: Int,
+	utf16Length: Int,
+	currentLineIndex: Int,
+	totalLineCount: Int,
+	lineRangeUTF16: NSRange,
+	columnUTF16: Int,
+	columnGrapheme: Int
+) {
+	#expect(info.selection == selection)
+	#expect(info.utf16 == utf16)
+	#expect(info.grapheme == grapheme)
+	#expect(info.stringLength == stringLength)
+	#expect(info.utf16Length == utf16Length)
+	#expect(info.currentLineIndex == currentLineIndex)
+	#expect(info.totalLineCount == totalLineCount)
+	#expect(info.lineRangeUTF16 == lineRangeUTF16)
+	#expect(info.columnUTF16 == columnUTF16)
+	#expect(info.columnGrapheme == columnGrapheme)
+}
+
+private final class InteractionProbe: NSObject, TextEditorInteractionDelegate {
+	var decideHandler: ((EditorEvent) -> EditCommand?)?
+	var focusHandler: ((FocusChange) -> Void)?
+	var willMoveHandler: ((NSWindow?) -> Void)?
+
+	func textEditor(_ textView: AutoSizingTextView, decide event: EditorEvent) -> EditCommand? {
+		decideHandler?(event)
 	}
 
-	// Multi-line scenarios (e.g., “Hello\nWorld”)
-	private func expectCaret(
-		_ info: CaretInfo,
-		selection: NSRange,
-		utf16: Int,
-		grapheme: Int,
-		stringLength: Int,
-		utf16Length: Int,
-		currentLineIndex: Int,
-		totalLineCount: Int,
-		lineRangeUTF16: NSRange,
-		columnUTF16: Int,
-		columnGrapheme: Int
-	) {
-		#expect(info.selection == selection)
-		#expect(info.utf16 == utf16)
-		#expect(info.grapheme == grapheme)
-		#expect(info.stringLength == stringLength)
-		#expect(info.utf16Length == utf16Length)
-		#expect(info.currentLineIndex == currentLineIndex)
-		#expect(info.totalLineCount == totalLineCount)
-		#expect(info.lineRangeUTF16 == lineRangeUTF16)
-		#expect(info.columnUTF16 == columnUTF16)
-		#expect(info.columnGrapheme == columnGrapheme)
+	func textEditor(_ textView: AutoSizingTextView, didRequestFocusChange change: FocusChange) {
+		focusHandler?(change)
 	}
+
+	func textEditor(_ textView: AutoSizingTextView, willMoveToWindow newWindow: NSWindow?) {
+		willMoveHandler?(newWindow)
+	}
+}

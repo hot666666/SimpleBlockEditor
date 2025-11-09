@@ -10,8 +10,7 @@ import SwiftUI
 struct AutoGrowTextEditor: NSViewRepresentable {
 	let nodeID: UUID
 	@Binding var text: String
-	var font: NSFont
-	var textInsets: NSSize = .init(width: 0, height: 6)
+	var style: EditorStyle
 
 	// SwiftUI에서 의사결정 내려주는 훅 (없으면 기본 nil 반환)
 	var onDecide: (EditorEvent) -> EditCommand? = { _ in nil }
@@ -24,67 +23,73 @@ struct AutoGrowTextEditor: NSViewRepresentable {
 		tv.isEditable = true
 		tv.isRichText = false
 		tv.drawsBackground = false
-		tv.font = font
-		tv.textColor = .labelColor
-		tv.insertionPointColor = .white
-		tv.textContainerInset = textInsets
 		tv.allowsUndo = true
 		tv.delegate = context.coordinator
 		tv.string = text
+		style.apply(to: tv)
+		tv.interactionDelegate = context.coordinator
 		
-		tv.nodeID = nodeID
-		// 결정 콜백 연결
-		tv._decide = onDecide
-		// 포커스 콜백 연결
-		tv._apply = onApply
-		// 레지스트리에 등록
-		EditorRegistry.shared.register(nodeID: nodeID, view: tv)
+		context.coordinator.nodeID = nodeID
 		
-		tv.normalizeBaselineIfNeeded()
-
 		return tv
 	}
 
 	func updateNSView(_ tv: AutoSizingTextView, context: Context) {
 		context.coordinator.parent = self
-		tv._decide = onDecide
-		tv._apply = onApply
+		context.coordinator.nodeID = nodeID
+		tv.interactionDelegate = context.coordinator
 		
 		if tv.string != text {
-			tv.undoManager?.disableUndoRegistration()
-			tv.string = text
-			tv.undoManager?.enableUndoRegistration()
-			tv.invalidateIntrinsicContentSize()
-		}
-		if tv.font?.isEqual(font) == false {
-			tv.typingAttributes[.font] = font
-			tv.textStorage?.beginEditing()
-			if let ts = tv.textStorage {
-				let full = NSRange(location: 0, length: ts.length)
-				ts.removeAttribute(.font, range: full)
-				ts.addAttribute(.font, value: font, range: full)
+			tv.withUndoGroup {
+				tv.string = text
 			}
-			tv.textStorage?.endEditing()
-			tv.font = font
-			tv.invalidateIntrinsicContentSize()
 		}
-		if tv.textContainerInset != textInsets {
-			tv.textContainerInset = textInsets
-			tv.invalidateIntrinsicContentSize()
-		}
+		style.apply(to: tv)
 		
-		tv.normalizeBaselineIfNeeded()
+		tv.invalidateIntrinsicContentSize()
 	}
 
-	func makeCoordinator() -> Coordinator { Coordinator(self) }
+	func makeCoordinator() -> Coordinator {
+		Coordinator(nodeID: nodeID, parent: self)
+	}
 
-	final class Coordinator: NSObject, NSTextViewDelegate {
+	final class Coordinator: NSObject, NSTextViewDelegate, TextEditorInteractionDelegate {
+		var nodeID: UUID
 		var parent: AutoGrowTextEditor
-		init(_ parent: AutoGrowTextEditor) { self.parent = parent }
+		
+		init(nodeID: UUID, parent: AutoGrowTextEditor) {
+			self.nodeID = nodeID
+			self.parent = parent
+		}
 		
 		func textDidChange(_ notification: Notification) {
 			guard let tv = notification.object as? NSTextView else { return }
 			parent.text = tv.string
+		}
+		
+		func textEditor(_ textView: AutoSizingTextView, decide event: EditorEvent) -> EditCommand? {
+			parent.onDecide(event)
+		}
+		
+		func textEditor(_ textView: AutoSizingTextView, didRequestFocusChange change: FocusChange) {
+			parent.onApply(EditCommand(requestFocusChange: change))
+
+			switch change {
+			case .otherNode(let id, let caret):
+				DispatchQueue.main.async {
+					EditorRegistry.shared.makeFirstResponder(nodeID: id, caret: caret)
+				}
+			case .clear:
+				break
+			}
+		}
+		
+		func textEditor(_ textView: AutoSizingTextView, willMoveToWindow newWindow: NSWindow?) {
+			if newWindow == nil {
+				EditorRegistry.shared.unregister(nodeID: nodeID)
+			} else {
+				EditorRegistry.shared.register(nodeID: nodeID, view: textView)
+			}
 		}
 	}
 }
