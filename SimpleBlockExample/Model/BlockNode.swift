@@ -7,9 +7,9 @@
 
 import SwiftUI
 
-@Observable
+// TODO: - 모델 정의와 id 처리
 final class BlockNode: Identifiable, Equatable {
-	nonisolated let id = UUID()
+	let id = UUID()
 	var kind: BlockKind
 	var text: String
 	var listNumber: Int?

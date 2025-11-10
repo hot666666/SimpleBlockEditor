@@ -21,6 +21,8 @@ enum BlockStoreEvent: Equatable {
 	case replaced([BlockNode])
 }
 
+// MARK: - In-Memory Block Store
+
 final class InMemoryBlockStore: BlockStore {
 	private let loadHandler: () async -> [BlockNode]
 	private let updatesHandler: () -> AsyncStream<BlockStoreEvent>

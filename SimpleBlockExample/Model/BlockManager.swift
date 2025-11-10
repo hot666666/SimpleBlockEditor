@@ -5,17 +5,21 @@
 //  Created by hs on 11/1/25.
 //
 
-import SwiftUI
+import Observation
+import Foundation
 
 @Observable
-final class BlockManager: @unchecked Sendable {
-	private let policy: any BlockEditingPolicy
-	private let store: BlockStore?
+final class BlockManager {
+	/// Edit policy & Store
+	@ObservationIgnored private let policy: any BlockEditingPolicy
+	@ObservationIgnored private let store: BlockStore?
+	/// Event clocks
+	private var nodeEventClock: UInt64 = 0
 	
-	private(set) var nodes: [BlockNode] = [.init(kind: .paragraph, text: "")]
-	private(set) var focusedNodeID: UUID?
-	
-	private var listen: Task<Void, Never>?
+	@ObservationIgnored private var bootstrapTask: Task<Void, Never>?
+	@ObservationIgnored private var nodes: [BlockNode] = [.init(kind: .paragraph, text: "")]
+	@ObservationIgnored private var focusedNodeID: UUID?
+	@ObservationIgnored private var pendingNodeEvents: [BlockNodeEvent] = []
 	
 	init(
 		store: BlockStore? = nil,
@@ -24,34 +28,66 @@ final class BlockManager: @unchecked Sendable {
 		self.policy = policy
 		self.store = store
 		
-		listen = Task {
+		bootstrapTask = Task {
 			await bootstrapStore()
 		}
 	}
 	
 	deinit {
-		listen?.cancel()
-		listen = nil
+		bootstrapTask?.cancel()
+		bootstrapTask = nil
 	}
 	
 	// MARK: - Public operations
 	
-	func decide(_ event: EditorEvent, for node: BlockNode) -> EditCommand? {
-		policy.decide(event: event, node: node, in: self)
+	func forEachInitialNode(_ body: (Int, BlockNode) -> Void) {
+		nodes.enumerated().forEach(body)
 	}
 	
-	func apply(_ command: EditCommand) {
+	func editCommand(for event: EditorEvent, node: BlockNode) -> EditCommand? {
+		policy.makeEditCommand(for: event, node: node, in: self)
+	}
+	
+	func applyFocusChange(from command: EditCommand) {
 		guard let focus = command.requestFocusChange else { return }
+		applyFocusChange(focus)
+	}
+	
+	func applyFocusChange(_ focus: FocusChange) {
 		switch focus {
 		case .otherNode(let id, _):
 			focusedNodeID = id
 		case .clear:
 			focusedNodeID = nil
 		}
+		enqueueFocusEvent(focus)
 	}
 	
 	func appendNode(_ node: BlockNode) {
 		insert(node, at: nodes.count, emitStoreEvent: true)
+	}
+	
+	func observeNodeEvents() -> [BlockNodeEvent] {
+		/// withObservationTracking 클로저 내에서 access를 호출하여, nodeEventClock에 대한 의존성을 기록
+		access(keyPath: \.nodeEventClock)
+		if pendingNodeEvents.isEmpty { return [] }
+		let events = pendingNodeEvents
+		pendingNodeEvents.removeAll()
+		return events
+	}
+}
+
+private extension BlockManager {
+	func enqueueNodeEvent(_ event: BlockNodeEvent) {
+		pendingNodeEvents.append(event)
+		withMutation(keyPath: \.nodeEventClock) {
+			/// 숫자가 최댓값을 넘어가면 다시 0부터 시작
+			nodeEventClock &+= 1
+		}
+	}
+	
+	func enqueueFocusEvent(_ change: FocusChange) {
+		enqueueNodeEvent(.focus(change))
 	}
 }
 
@@ -78,6 +114,7 @@ private extension BlockManager {
 		}
 	}
 	
+	// Store에 이벤트 전송
 	func sendStoreEvent(_ event: BlockStoreEvent) {
 		guard let store else { return }
 		Task {
@@ -108,6 +145,7 @@ private extension BlockManager {
 	func insert(_ node: BlockNode, at index: Int, emitStoreEvent: Bool) {
 		let clamped = max(0, min(index, nodes.count))
 		nodes.insert(node, at: clamped)
+		enqueueNodeEvent(.insert(node: node, index: clamped))
 		
 		if emitStoreEvent {
 			sendStoreEvent(.inserted(node, at: clamped))
@@ -121,6 +159,7 @@ private extension BlockManager {
 		nodes[idx].kind = node.kind
 		nodes[idx].text = node.text
 		nodes[idx].listNumber = node.listNumber
+		enqueueNodeEvent(.update(node: nodes[idx], index: idx))
 		
 		if emitStoreEvent {
 			sendStoreEvent(.updated(nodes[idx], at: idx))
@@ -132,6 +171,7 @@ private extension BlockManager {
 		guard let idx else { return }
 		
 		let removed = nodes.remove(at: idx)
+		enqueueNodeEvent(.remove(node: removed, index: idx))
 		if emitStoreEvent {
 			sendStoreEvent(.removed(removed, at: idx))
 		}
@@ -144,6 +184,7 @@ private extension BlockManager {
 	func sendUpdate(forNodeID nodeID: UUID) {
 		guard let idx = index(ofNodeID: nodeID) else { return }
 		let node = nodes[idx]
+		enqueueNodeEvent(.update(node: node, index: idx))
 		sendStoreEvent(.updated(node, at: idx))
 	}
 }
@@ -177,6 +218,7 @@ extension BlockManager: BlockEditingContext {
 	
 	func notifyUpdate(of node: BlockNode) {
 		guard let idx = index(of: node) else { return }
+		enqueueNodeEvent(.update(node: nodes[idx], index: idx))
 		sendStoreEvent(.updated(nodes[idx], at: idx))
 	}
 	

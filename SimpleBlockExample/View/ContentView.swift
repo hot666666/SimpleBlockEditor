@@ -15,15 +15,9 @@ struct ContentView: View {
 		self._manager = State(wrappedValue: BlockManager(store: store))
 	}
 
-	var body: some View {
-		List {
-			ForEach(manager.nodes) { node in
-				BlockRowEditor(manager: manager, node: node)
-			}
-			.listRowInsets(EdgeInsets())
-			.listRowSeparator(.hidden)
-		}
-		.listStyle(.plain)
+var body: some View {
+		BlockEditorHost(manager: manager)
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
 	}
 }
 

@@ -7,28 +7,15 @@
 
 import Foundation
 
-// MARK: - Editing policy contracts
-
-protocol BlockEditingContext: AnyObject {
-	var nodes: [BlockNode] { get }
-	func index(of node: BlockNode) -> Int?
-	func previousNode(of node: BlockNode) -> BlockNode?
-	func nextNode(of node: BlockNode) -> BlockNode?
-	func insertNode(_ node: BlockNode, at index: Int)
-	func removeNode(at index: Int)
-	func notifyUpdate(of node: BlockNode)
-	func notifyMerge(from source: BlockNode, into target: BlockNode)
-}
-
 protocol BlockEditingPolicy {
-	func decide(event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand?
+	func makeEditCommand(for event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand?
 }
 
-// MARK: - Default policy
+// MARK: - DefaultBlockEditingPolicy
 
-struct DefaultBlockEditingPolicy: BlockEditingPolicy {
-	func decide(event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand? {
-		switch event {
+	struct DefaultBlockEditingPolicy: BlockEditingPolicy {
+		func makeEditCommand(for event: EditorEvent, node: BlockNode, in context: BlockEditingContext) -> EditCommand? {
+			switch event {
 		case .space(let info):
 			return handleSpace(info: info, node: node, context: context)
 
@@ -248,5 +235,5 @@ enum UTF16Char {
 	static let DASH: UInt16 = 45   // '-'
 	static let LBR: UInt16 = 91    // '['
 	static let RBR: UInt16 = 93    // ']'
-	static let X:   UInt16 = 120  // 'x'
+	static let X:   UInt16 = 120   // 'x'
 }

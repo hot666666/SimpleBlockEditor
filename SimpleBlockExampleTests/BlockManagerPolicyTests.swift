@@ -15,7 +15,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 1, string: "#")
 
-		guard let command = manager.decide(.space(info), for: node) else {
+		guard let command = manager.editCommand(for: .space(info), node: node) else {
 			Issue.record("Expected EditCommand for heading trigger")
 			return
 		}
@@ -32,7 +32,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 3, string: "[x]")
 
-		guard let command = manager.decide(.space(info), for: node) else {
+		guard let command = manager.editCommand(for: .space(info), node: node) else {
 			Issue.record("Expected EditCommand for todo trigger")
 			return
 		}
@@ -49,13 +49,14 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 4, string: "Task")
 
-		guard let command = manager.decide(.enter(info, true), for: node) else {
+		guard let command = manager.editCommand(for: .enter(info, true), node: node) else {
 			Issue.record("Expected EditCommand for enter at tail")
 			return
 		}
 
-		#expect(manager.nodes.count == 2)
-		let newNode = manager.nodes[1]
+		let nodes = snapshotNodes(manager)
+		#expect(nodes.count == 2)
+		let newNode = nodes[1]
 		#expect(newNode.kind == .todo(checked: false))
 		#expect(newNode.text.isEmpty)
 		#expect(command.requestFocusChange == .otherNode(id: newNode.id, caret: 0))
@@ -68,15 +69,16 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 5, string: "HelloWorld")
 
-		guard let command = manager.decide(.enter(info, false), for: node) else {
+		guard let command = manager.editCommand(for: .enter(info, false), node: node) else {
 			Issue.record("Expected EditCommand for enter in middle")
 			return
 		}
 
-		#expect(manager.nodes.count == 2)
+		let nodes = snapshotNodes(manager)
+		#expect(nodes.count == 2)
 		#expect(node.text == "Hello")
 
-		let newNode = manager.nodes[1]
+		let newNode = nodes[1]
 		#expect(newNode.kind == .paragraph)
 		#expect(newNode.text == "World")
 		#expect(command.requestFocusChange == .otherNode(id: newNode.id, caret: 0))
@@ -87,7 +89,7 @@ struct BlockManagerPolicyTests {
 		let node = BlockNode(kind: .heading(level: 2), text: "Title")
 		let manager = await makeManager(nodes: [node])
 
-		guard let command = manager.decide(.deleteAtStart, for: node) else {
+		guard let command = manager.editCommand(for: .deleteAtStart, node: node) else {
 			Issue.record("Expected EditCommand for style reset")
 			return
 		}
@@ -102,12 +104,12 @@ struct BlockManagerPolicyTests {
 		let node = BlockNode(kind: .paragraph, text: "World")
 		let manager = await makeManager(nodes: [prev, node])
 
-		guard let command = manager.decide(.deleteAtStart, for: node) else {
+		guard let command = manager.editCommand(for: .deleteAtStart, node: node) else {
 			Issue.record("Expected EditCommand for merge")
 			return
 		}
 
-		#expect(manager.nodes.count == 1)
+		#expect(snapshotNodes(manager).count == 1)
 		#expect(prev.text == "HelloWorld")
 		#expect(command.requestFocusChange == .otherNode(id: prev.id, caret: 5))
 		#expect(command.insertText == "World")
@@ -121,7 +123,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 0, string: "Current")
 
-		guard let command = manager.decide(.arrowLeft(info), for: node) else {
+		guard let command = manager.editCommand(for: .arrowLeft(info), node: node) else {
 			Issue.record("Expected EditCommand for arrow left")
 			return
 		}
@@ -137,7 +139,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 7, string: "Current")
 
-		guard let command = manager.decide(.arrowRight(info), for: node) else {
+		guard let command = manager.editCommand(for: .arrowRight(info), node: node) else {
 			Issue.record("Expected EditCommand for arrow right")
 			return
 		}
@@ -153,7 +155,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
-		guard let command = manager.decide(.arrowUp(info), for: node) else {
+		guard let command = manager.editCommand(for: .arrowUp(info), node: node) else {
 			Issue.record("Expected EditCommand for arrow up")
 			return
 		}
@@ -170,7 +172,7 @@ struct BlockManagerPolicyTests {
 
 		let info = singleLineCaret(location: 3, string: "Current")
 
-		guard let command = manager.decide(.arrowDown(info), for: node) else {
+		guard let command = manager.editCommand(for: .arrowDown(info), node: node) else {
 			Issue.record("Expected EditCommand for arrow down")
 			return
 		}
@@ -186,7 +188,7 @@ struct BlockManagerPolicyTests {
 		let policy = DefaultBlockEditingPolicy()
 
 		let info = singleLineCaret(location: 1, string: "#")
-		guard let command = policy.decide(event: .space(info), node: node, in: context) else {
+		guard let command = policy.makeEditCommand(for: .space(info), node: node, in: context) else {
 			Issue.record("Expected EditCommand for heading trigger")
 			return
 		}
@@ -202,7 +204,7 @@ struct BlockManagerPolicyTests {
 		let policy = DefaultBlockEditingPolicy()
 
 		let info = singleLineCaret(location: 5, string: "HelloWorld")
-		guard policy.decide(event: .enter(info, false), node: node, in: context) != nil else {
+		guard policy.makeEditCommand(for: .enter(info, false), node: node, in: context) != nil else {
 			Issue.record("Expected EditCommand for enter split")
 			return
 		}
@@ -222,7 +224,7 @@ struct BlockManagerPolicyTests {
 		let context = MockContext(nodes: [head, tail])
 		let policy = DefaultBlockEditingPolicy()
 
-		guard policy.decide(event: .deleteAtStart, node: tail, in: context) != nil else {
+		guard policy.makeEditCommand(for: .deleteAtStart, node: tail, in: context) != nil else {
 			Issue.record("Expected EditCommand for delete at start")
 			return
 		}
@@ -329,4 +331,12 @@ private func makeManager(nodes: [BlockNode]) async -> BlockManager {
 	try? await Task.sleep(nanoseconds: 250_000_000)
 	
 	return manager
+}
+
+private func snapshotNodes(_ manager: BlockManager) -> [BlockNode] {
+	var result: [BlockNode] = []
+	manager.forEachInitialNode { _, node in
+		result.append(node)
+	}
+	return result
 }

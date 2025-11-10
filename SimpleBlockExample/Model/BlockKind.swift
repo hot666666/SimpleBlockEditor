@@ -17,30 +17,16 @@ enum BlockKind: Equatable {
 	var usesGutter: Bool {
 		switch self {
 		case .bullet, .ordered, .todo(_): true
-		case .paragraph, .heading(_):     false
+		case .paragraph, .heading(_): false
 		}
 	}
 }
 
+// TODO: - 스타일 모델 정의 및 향후 NSFont 로 적용
 extension BlockKind {
-    // Provide a nonisolated Equatable implementation so tests can compare
-    // kinds outside the main actor context (Swift 6 isolation rules).
-    nonisolated static func == (lhs: BlockKind, rhs: BlockKind) -> Bool {
-        switch (lhs, rhs) {
-        case (.paragraph, .paragraph): return true
-        case let (.heading(a), .heading(b)): return a == b
-        case (.bullet, .bullet): return true
-        case (.ordered, .ordered): return true
-        case let (.todo(a), .todo(b)): return a == b
-        default: return false
-        }
-    }
-
-    var font: NSFont {
-        switch self {
-        case .paragraph:
-            return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
-        case .heading(let level):
+	var font: NSFont {
+		switch self {
+		case .heading(let level):
 			switch level {
 			case 1:
 				return NSFont.monospacedSystemFont(ofSize: 24, weight: .bold)
@@ -49,9 +35,9 @@ extension BlockKind {
 			case 3:
 				return NSFont.monospacedSystemFont(ofSize: 16, weight: .bold)
 			default:
-				return NSFont.monospacedSystemFont(ofSize: 14, weight: .bold)
+				return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
 			}
-		case .bullet, .ordered, .todo(_):
+		case .paragraph, .bullet, .ordered, .todo(_):
 			return NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
 		}
 	}

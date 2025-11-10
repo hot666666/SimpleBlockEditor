@@ -11,8 +11,9 @@ struct BlockManagerStoreTests {
 	@Test("init without store creates default paragraph")
 	func initWithoutStoreCreatesDefaultParagraph() {
 		let manager = BlockManager(policy: DefaultBlockEditingPolicy())
-		#expect(manager.nodes.count == 1)
-		let node = manager.nodes[0]
+		let nodes = snapshotNodes(manager)
+		#expect(nodes.count == 1)
+		let node = nodes[0]
 		#expect(node.kind == .paragraph)
 		#expect(node.text.isEmpty)
 	}
@@ -150,8 +151,9 @@ struct BlockManagerStoreTests {
 		)
 
 		_ = await store.waitForLoad()
-		#expect(manager.nodes.count == 1)
-		let node = manager.nodes[0]
+		let nodes = snapshotNodes(manager)
+		#expect(nodes.count == 1)
+		let node = nodes[0]
 		#expect(node.kind == .paragraph)
 
 		var iterator = store.eventsIterator()
@@ -183,6 +185,14 @@ struct BlockManagerStoreTests {
 		#expect(recorded.text == "Edited")
 		#expect(index == 0)
 	}
+}
+
+private func snapshotNodes(_ manager: BlockManager) -> [BlockNode] {
+	var result: [BlockNode] = []
+	manager.forEachInitialNode { _, node in
+		result.append(node)
+	}
+	return result
 }
 
 private final class SpyBlockStore: BlockStore {
