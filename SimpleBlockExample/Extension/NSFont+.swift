@@ -8,7 +8,7 @@
 import AppKit
 
 extension NSFont {
-	var blockLineHeight: CGFloat {
-		ceil(ascender - descender + leading)
-	}
+  var blockLineHeight: CGFloat {
+    ceil(ascender - descender + leading)
+  }
 }
