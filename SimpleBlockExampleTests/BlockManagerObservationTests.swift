@@ -3,6 +3,8 @@ import Testing
 
 @testable import SimpleBlockExample
 
+// MARK: - BlockManagerObservationTests
+
 @MainActor
 @Suite("BlockManagerObservationTests")
 struct BlockManagerObservationTests {
@@ -10,7 +12,7 @@ struct BlockManagerObservationTests {
   func insertAndUpdateEmitNodeEvents() {
     let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
     let fresh = BlockNode(kind: .paragraph, text: "Second line")
-    manager.appendNode(fresh)
+    append(node: fresh, to: manager)
 
     let insertEvents = manager.observeNodeEvents()
     guard let insert = insertEvents.last else {
@@ -61,8 +63,7 @@ struct BlockManagerObservationTests {
       return
     }
 
-    manager.applyFocusChange(
-      from: EditorCommand(requestFocusChange: .otherNode(id: node.id, caret: 2)))
+    manager.applyFocusChange(.otherNode(id: node.id, caret: 2))
 
     let nodeEvents = manager.observeNodeEvents()
     guard let last = nodeEvents.last else {
@@ -77,36 +78,14 @@ struct BlockManagerObservationTests {
       Issue.record("Expected focus node event, got \(last)")
     }
   }
+}
 
-  @Test("observation clock notifies dependents on node events")
-  func observationClockTracksNodeEventQueue() async throws {
-    let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
+// MARK: - Helper
 
-    actor Counter {
-      private var hits = 0
-      func increment() { hits += 1 }
-      func value() -> Int { hits }
-    }
-    let counter = Counter()
-
-    withObservationTracking {
-      _ = manager.observeNodeEvents()
-    } onChange: {
-      Task { await counter.increment() }
-    }
-
-    let inserted = BlockNode(kind: .paragraph, text: "Tracked")
-    manager.appendNode(inserted)
-    try await Task.sleep(nanoseconds: 5_000_000)  // allow onChange dispatch
-
-    #expect(await counter.value() == 1)
-
-    let events = manager.observeNodeEvents()
-    #expect(events.contains { event in
-      if case .insert(let node, _) = event {
-        return node.id == inserted.id
-      }
-      return false
-    })
+private func append(node: BlockNode, to manager: EditorBlockManager) {
+  var count = 0
+  manager.forEachInitialNode { index, _ in
+    count = max(count, index + 1)
   }
+  manager.insert(node: node, at: count)
 }

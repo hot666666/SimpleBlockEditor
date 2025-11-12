@@ -11,6 +11,8 @@ import Observation
 /// 에디터 행을 스택으로 구성하고 편집 이벤트를 구독하는 상위 컨트롤러입니다.
 final class BlockEditorViewController: NSViewController {
   private let manager: EditorBlockManager
+  private var hasConfiguredInitialRows = false
+  private var isObservingNodeEvents = false
 
   /// 에디터용 스크롤 뷰입니다.
   private let scrollView: NSScrollView = {
@@ -78,19 +80,40 @@ final class BlockEditorViewController: NSViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    configureInitialRows()
-    observeNodeEvents()
+  }
+
+  override func viewWillAppear() {
+    super.viewWillAppear()
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      await self.manager.startStoreSync()
+      self.configureInitialRowsIfNeeded()
+      self.startObservingNodeEventsIfNeeded()
+    }
+  }
+
+  override func viewWillDisappear() {
+    super.viewWillDisappear()
+		self.manager.stopStoreSync()
   }
 }
 
 extension BlockEditorViewController {
-  fileprivate func configureInitialRows() {
+  fileprivate func configureInitialRowsIfNeeded() {
+    guard !hasConfiguredInitialRows else { return }
     var seeds: [(Int, BlockNode)] = []
     manager.forEachInitialNode { seeds.append(($0, $1)) }
     rowCoordinator.bindInitialNodes(seeds)
+    hasConfiguredInitialRows = true
   }
 
 	/// Observable 기반 변화 감지
+  fileprivate func startObservingNodeEventsIfNeeded() {
+    guard !isObservingNodeEvents else { return }
+    isObservingNodeEvents = true
+    observeNodeEvents()
+  }
+
   fileprivate func observeNodeEvents() {
     _ = withObservationTracking { [weak self] in
       self?.drainNodeEvents()

@@ -36,7 +36,7 @@ enum BlockKind: Equatable {
 /// 사용자가 편집하는 단일 블록을 나타내는 뷰 모델입니다.
 final class BlockNode: Identifiable, Equatable {
   /// 뷰 갱신을 위한 고유 식별자입니다.
-  let id = UUID()
+  let id: UUID
   /// 표시할 블록 종류입니다.
   var kind: BlockKind
   /// 사용자가 입력한 텍스트 본문입니다.
@@ -44,7 +44,8 @@ final class BlockNode: Identifiable, Equatable {
   /// 순서형 목록에서 사용할 번호 캐시입니다.
   var listNumber: Int?
 
-  init(kind: BlockKind = .paragraph, text: String = "", listNumber: Int? = nil) {
+  init(id: UUID = UUID(), kind: BlockKind = .paragraph, text: String = "", listNumber: Int? = nil) {
+    self.id = id
     self.kind = kind
     self.text = text
     self.listNumber = listNumber

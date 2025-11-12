@@ -18,15 +18,15 @@ struct BlockManagerStoreTests {
     #expect(node.text.isEmpty)
   }
 
-  @Test("appendNode emits store insert")
-  func appendNodeEmitsStoreInsert() async {
+  @Test("insert emits store insert")
+  func insertEmitsStoreInsert() async {
     let store = SpyBlockStore(load: [])
     let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
 
-    _ = await store.waitForLoad()
+    await startStoreLifecycle(manager: manager, store: store)
     var iterator = store.eventsIterator()
 
     guard let snapshot = await awaitNext(&iterator) else {
@@ -42,7 +42,7 @@ struct BlockManagerStoreTests {
     #expect(snapshotNodes.first?.kind == .paragraph)
 
     let node = BlockNode(kind: .paragraph, text: "New")
-    manager.appendNode(node)
+    append(node: node, to: manager)
 
     guard let event = await awaitNext(&iterator) else {
       Issue.record("Expected inserted event")
@@ -67,7 +67,7 @@ struct BlockManagerStoreTests {
       policy: DefaultBlockEditingPolicy()
     )
 
-    _ = await store.waitForLoad()
+    await startStoreLifecycle(manager: manager, store: store)
     var iterator = store.eventsIterator()
     node.text = "Updated"
     manager.update(node: node)
@@ -96,7 +96,7 @@ struct BlockManagerStoreTests {
       policy: DefaultBlockEditingPolicy()
     )
 
-    _ = await store.waitForLoad()
+    await startStoreLifecycle(manager: manager, store: store)
     var iterator = store.eventsIterator()
     manager.remove(nodeID: node.id)
 
@@ -124,7 +124,7 @@ struct BlockManagerStoreTests {
       policy: DefaultBlockEditingPolicy()
     )
 
-    _ = await store.waitForLoad()
+    await startStoreLifecycle(manager: manager, store: store)
     var iterator = store.eventsIterator()
     manager.merge(nodeID: tail.id, into: head.id)
 
@@ -157,7 +157,7 @@ struct BlockManagerStoreTests {
       policy: DefaultBlockEditingPolicy()
     )
 
-    _ = await store.waitForLoad()
+    await startStoreLifecycle(manager: manager, store: store)
     let nodes = snapshotNodes(manager)
     #expect(nodes.count == 1)
     let node = nodes[0]
@@ -202,6 +202,23 @@ private func snapshotNodes(_ manager: EditorBlockManager) -> [BlockNode] {
     result.append(node)
   }
   return result
+}
+
+private func append(node: BlockNode, to manager: EditorBlockManager) {
+  var count = 0
+  manager.forEachInitialNode { index, _ in
+    count = max(count, index + 1)
+  }
+  manager.insert(node: node, at: count)
+}
+
+@MainActor
+private func startStoreLifecycle(manager: EditorBlockManager, store: SpyBlockStore) async {
+  let startTask = Task { @MainActor in
+    await manager.startStoreSync()
+  }
+  _ = await store.waitForLoad()
+  await startTask.value
 }
 
 private final class SpyBlockStore: BlockStore {

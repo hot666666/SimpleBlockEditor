@@ -359,9 +359,7 @@ private func makeManager(nodes: [BlockNode]) async -> EditorBlockManager {
   let store = MockBlockStore(initialNodes: nodes)
   let manager = EditorBlockManager(store: store, policy: DefaultBlockEditingPolicy())
 
-  // 데이터 로드 대기
-  try? await Task.sleep(nanoseconds: 250_000_000)
-
+  await manager.startStoreSync()
   return manager
 }
 

@@ -25,11 +25,13 @@ final class EditorBlockManager {
   @ObservationIgnored private let policy: any BlockEditingPolicy
   /// 외부 스토리지와 동기화를 담당하는 블록 스토어입니다.
   @ObservationIgnored private let store: BlockStore?
-  /// Observation 의존성을 강제로 깨우기 위한 이벤트 시계입니다.
+  /// Observation 의존성을 강제로 깨우기 위한 이벤트 관련 변수입니다.
   private var nodeEventClock: UInt64 = 0
 
-  /// 스토어 초기화를 수행하는 백그라운드 태스크입니다.
-  @ObservationIgnored private var bootstrapTask: Task<Void, Never>?
+  /// 스토어 업데이트 스트림을 수신하는 태스크입니다.
+  @ObservationIgnored private var storeUpdatesTask: Task<Void, Never>?
+  /// 최초 스토어 스냅샷 로딩 여부입니다.
+  @ObservationIgnored private var hasLoadedInitialStoreSnapshot = false
   /// 현재 편집 중인 블록 노드 배열입니다.
   @ObservationIgnored private var nodes: [BlockNode] = [.init(kind: .paragraph, text: "")]
   /// 포커스를 보유한 노드의 식별자입니다.
@@ -44,15 +46,36 @@ final class EditorBlockManager {
     self.policy = policy
     self.store = store
 
-    bootstrapTask = Task {
-      await bootstrapStore()
-    }
   }
 
   deinit {
-    bootstrapTask?.cancel()
-    bootstrapTask = nil
+    storeUpdatesTask?.cancel()
+    storeUpdatesTask = nil
   }
+	
+	/// 스토어 동기화를 시작하고 데이터 업데이트를 감지합니다.
+	@MainActor
+	func startStoreSync() async {
+		guard let store else { return }
+		
+		if !hasLoadedInitialStoreSnapshot {
+			let initial = await store.load()
+			applyInitialStoreSnapshot(initial)
+			hasLoadedInitialStoreSnapshot = true
+		}
+		
+		guard storeUpdatesTask == nil else { return }
+		storeUpdatesTask = Task { [weak self, store] in
+			guard let self else { return }
+			await self.consumeStoreUpdates(from: store)
+		}
+	}
+	
+	/// 스토어 업데이트 스트림 구독을 중단합니다.
+	func stopStoreSync() {
+		storeUpdatesTask?.cancel()
+		storeUpdatesTask = nil
+	}
 
   /// 최초 로딩된 노드들을 순회하면서 뷰 초기화를 돕습니다.
   func forEachInitialNode(_ body: (Int, BlockNode) -> Void) {
@@ -64,13 +87,7 @@ final class EditorBlockManager {
     policy.makeEditorCommand(for: event, node: node, in: self)
   }
 
-  /// 명령이 요청한 포커스 변화를 적용합니다.
-  func applyFocusChange(from command: EditorCommand) {
-    guard let focus = command.requestFocusChange else { return }
-    applyFocusChange(focus)
-  }
-
-  /// 직접 전달된 포커스 이벤트를 반영하고 노티를 발행합니다.
+  /// 직접 전달된 포커스 이벤트를 반영하고 알림을 발행합니다.
   func applyFocusChange(_ focus: EditorFocusEvent) {
     switch focus {
     case .otherNode(let id, _):
@@ -79,11 +96,6 @@ final class EditorBlockManager {
       focusedNodeID = nil
     }
     enqueueFocusEvent(focus)
-  }
-
-  /// 노드를 끝에 추가하고 스토어에도 반영합니다.
-  func appendNode(_ node: BlockNode) {
-    applyInsertion(node, at: nodes.count, origin: .localPolicy)
   }
 
   /// 누적된 블록 이벤트를 한 번에 방출하고 클럭을 새로 고칩니다.
@@ -113,40 +125,33 @@ extension EditorBlockManager {
   }
 }
 
-// MARK: - Store bootstrap
+// MARK: - Store heplers
 
 extension EditorBlockManager {
-	/// 외부 스토어에서 초기 데이터를 불러오고 갱신 스트림을 구독합니다.
-	fileprivate func bootstrapStore() async {
-		guard let store = store else { return }
-		
-		let initial = await store.load()
-		
-		await MainActor.run {
-			if initial.isEmpty {
-				sendStoreEvent(.replaced(nodes))
-			} else {
-				self.nodes = initial
-			}
-		}
-		
-		for await event in store.updates() {
-			await MainActor.run {
-				self.handleExternal(event)
-			}
-		}
-	}
-}
+  /// 초기 스냅샷을 적용하거나, 비어 있다면 현재 노드를 스토어에 전파합니다.
+  fileprivate func applyInitialStoreSnapshot(_ initial: [BlockNode]) {
+    if initial.isEmpty {
+      sendStoreEvent(.replaced(nodes))
+    } else {
+      nodes = initial
+    }
+  }
 
-extension EditorBlockManager {
-  /// 외부 스토어에 편집 이벤트를 전송합니다.
-  fileprivate func sendStoreEvent(_ event: BlockStoreEvent) {
-    guard let store else { return }
-    Task {
-      await store.apply(event)
+  /// 스토어 업데이트 스트림을 소비하면서 로컬 상태를 갱신합니다.
+  fileprivate func consumeStoreUpdates(from store: BlockStore) async {
+    for await event in store.updates() {
+        await handleExternal(event)
     }
   }
 	
+	/// 외부 스토어에 편집 이벤트를 전송합니다.
+	fileprivate func sendStoreEvent(_ event: BlockStoreEvent) {
+		guard let store else { return }
+		Task {
+			await store.apply(event)
+		}
+	}
+
 	/// 스토어 이벤트 발행이 필요한 경우에만 외부에 전달합니다.
 	fileprivate func publishStoreEvent(_ event: BlockStoreEvent, origin: NodeMutationOrigin) {
 		guard origin == .localPolicy else { return }
@@ -154,7 +159,8 @@ extension EditorBlockManager {
 	}
 
   /// 외부에서 전달된 스토어 이벤트를 로컬 상태와 동기화합니다.
-  fileprivate func handleExternal(_ event: BlockStoreEvent) {
+	@MainActor
+  fileprivate func handleExternal(_ event: BlockStoreEvent) async {
     switch event {
     case .inserted(let node, at: let index):
       applyInsertion(node, at: index, origin: .externalStore)
