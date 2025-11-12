@@ -8,6 +8,16 @@
 import Foundation
 import Observation
 
+// MARK: - NodeMutationOrigin
+
+/// 노드 변형이 어디에서 비롯됐는지 나타내는 내부 구분자입니다.
+fileprivate enum NodeMutationOrigin {
+  case localPolicy
+  case externalStore
+}
+
+// MARK: - EditorBlockManager
+
 /// 블록 리스트와 편집 명령을 총괄하는 Observable 편집 관리자입니다.
 @Observable
 final class EditorBlockManager {
@@ -50,7 +60,7 @@ final class EditorBlockManager {
   }
 
   /// 키 입력 이벤트에 대응하는 편집 명령을 생성합니다.
-  func editCommand(for event: EditorKeyEvent, node: BlockNode) -> EditorCommand? {
+  func command(for event: EditorKeyEvent, node: BlockNode) -> EditorCommand? {
     policy.makeEditorCommand(for: event, node: node, in: self)
   }
 
@@ -73,7 +83,7 @@ final class EditorBlockManager {
 
   /// 노드를 끝에 추가하고 스토어에도 반영합니다.
   func appendNode(_ node: BlockNode) {
-    insert(node, at: nodes.count, emitStoreEvent: true)
+    applyInsertion(node, at: nodes.count, origin: .localPolicy)
   }
 
   /// 누적된 블록 이벤트를 한 번에 방출하고 클럭을 새로 고칩니다.
@@ -136,41 +146,44 @@ extension EditorBlockManager {
       await store.apply(event)
     }
   }
+	
+	/// 스토어 이벤트 발행이 필요한 경우에만 외부에 전달합니다.
+	fileprivate func publishStoreEvent(_ event: BlockStoreEvent, origin: NodeMutationOrigin) {
+		guard origin == .localPolicy else { return }
+		sendStoreEvent(event)
+	}
 
   /// 외부에서 전달된 스토어 이벤트를 로컬 상태와 동기화합니다.
   fileprivate func handleExternal(_ event: BlockStoreEvent) {
     switch event {
     case .inserted(let node, at: let index):
-      insert(node, at: index, emitStoreEvent: false)
+      applyInsertion(node, at: index, origin: .externalStore)
 
     case .updated(let node, at: let index):
-      update(node, at: index, emitStoreEvent: false)
+      applyUpdate(node, at: index, origin: .externalStore)
 
     case .removed(let node, at: let index):
-      remove(node, at: index, emitStoreEvent: false)
+      applyRemoval(node, at: index, origin: .externalStore)
 
     case .merged(let source, let target):
-      remove(source, at: nil, emitStoreEvent: false)
-      update(target, at: nil, emitStoreEvent: false)
+      applyRemoval(source, at: nil, origin: .externalStore)
+      applyUpdate(target, at: nil, origin: .externalStore)
 
     case .replaced(let newNodes):
       nodes = newNodes
     }
   }
 
-  /// 지정된 위치에 노드를 삽입하고 필요 시 스토어 이벤트를 발행합니다.
-  fileprivate func insert(_ node: BlockNode, at index: Int, emitStoreEvent: Bool) {
+  /// 지정된 위치에 노드를 삽입하고 필요한 알림을 발행합니다.
+  fileprivate func applyInsertion(_ node: BlockNode, at index: Int, origin: NodeMutationOrigin) {
     let clamped = max(0, min(index, nodes.count))
     nodes.insert(node, at: clamped)
     enqueueNodeEvent(.insert(node: node, index: clamped))
-
-    if emitStoreEvent {
-      sendStoreEvent(.inserted(node, at: clamped))
-    }
+    publishStoreEvent(.inserted(node, at: clamped), origin: origin)
   }
 
-  /// 노드 내용을 갱신하고 연관된 이벤트를 전파합니다.
-  fileprivate func update(_ node: BlockNode, at indexHint: Int?, emitStoreEvent: Bool) {
+  /// 노드 내용을 갱신하고 알림을 발행합니다.
+  fileprivate func applyUpdate(_ node: BlockNode, at indexHint: Int?, origin: NodeMutationOrigin) {
     let idx = indexHint ?? index(ofNodeID: node.id)
     guard let idx else { return }
 
@@ -178,79 +191,98 @@ extension EditorBlockManager {
     nodes[idx].text = node.text
     nodes[idx].listNumber = node.listNumber
     enqueueNodeEvent(.update(node: nodes[idx], index: idx))
-
-    if emitStoreEvent {
-      sendStoreEvent(.updated(nodes[idx], at: idx))
-    }
+    publishStoreEvent(.updated(nodes[idx], at: idx), origin: origin)
   }
 
-  /// 노드를 제거하고 삭제 사실을 통지합니다.
-  fileprivate func remove(_ node: BlockNode, at indexHint: Int?, emitStoreEvent: Bool) {
+  /// 노드를 제거하고 삭제 알림을 발행합니다.
+  fileprivate func applyRemoval(_ node: BlockNode, at indexHint: Int?, origin: NodeMutationOrigin) {
     let idx = indexHint ?? index(ofNodeID: node.id)
-    guard let idx else { return }
+    guard let idx, nodes.indices.contains(idx) else { return }
 
     let removed = nodes.remove(at: idx)
     enqueueNodeEvent(.remove(node: removed, index: idx))
-    if emitStoreEvent {
-      sendStoreEvent(.removed(removed, at: idx))
-    }
-  }
-
-  /// 주어진 식별자를 가진 노드의 인덱스를 반환합니다.
-  fileprivate func index(ofNodeID id: UUID) -> Int? {
-    nodes.firstIndex(where: { $0.id == id })
-  }
-
-  /// 노드 단일 항목이 갱신되었음을 노티파이합니다.
-  fileprivate func sendUpdate(forNodeID nodeID: UUID) {
-    guard let idx = index(ofNodeID: nodeID) else { return }
-    let node = nodes[idx]
-    enqueueNodeEvent(.update(node: node, index: idx))
-    sendStoreEvent(.updated(node, at: idx))
+    publishStoreEvent(.removed(removed, at: idx), origin: origin)
   }
 }
 
-// MARK: - BlockEditingContextProtocol
+// MARK: - BlockEditingContext
 
-extension EditorBlockManager: BlockEditingContextProtocol {
-  /// 주어진 노드의 현재 인덱스를 조회합니다.
-  func index(of node: BlockNode) -> Int? {
-    index(ofNodeID: node.id)
+extension EditorBlockManager: BlockEditingContext {
+  /// 주어진 노드 식별자의 현재 인덱스를 조회합니다.
+  func index(of nodeID: UUID) -> Int? {
+    index(ofNodeID: nodeID)
   }
 
   /// 이전 형제 노드를 반환합니다.
-  func previousNode(of node: BlockNode) -> BlockNode? {
-    guard let idx = index(of: node), idx > 0 else { return nil }
+  func node(before nodeID: UUID) -> BlockNode? {
+    guard let idx = index(ofNodeID: nodeID), idx > 0 else { return nil }
     return nodes[idx - 1]
   }
 
   /// 다음 형제 노드를 반환합니다.
-  func nextNode(of node: BlockNode) -> BlockNode? {
-    guard let idx = index(of: node), idx < nodes.count - 1 else { return nil }
+  func node(after nodeID: UUID) -> BlockNode? {
+    guard let idx = index(ofNodeID: nodeID), idx < nodes.count - 1 else { return nil }
     return nodes[idx + 1]
   }
 
-  /// 외부 요청에 따라 노드를 삽입합니다.
-  func insertNode(_ node: BlockNode, at index: Int) {
-    insert(node, at: index, emitStoreEvent: true)
+  /// 지정 노드를 분할하고 새 꼬리 노드를 반환합니다.
+  func split(nodeID: UUID, atUTF16 offset: Int) -> BlockNode? {
+    guard let idx = index(ofNodeID: nodeID) else { return nil }
+    let node = nodes[idx]
+
+    let nsText = node.text as NSString
+    let length = nsText.length
+    let clamped = max(0, min(offset, length))
+    let head = nsText.substring(to: clamped)
+    let tail = nsText.substring(from: clamped)
+
+    if node.text != head {
+      node.text = head
+      applyUpdate(node, at: idx, origin: .localPolicy)
+    }
+
+    let newNode = BlockNode(kind: node.kind, text: tail)
+    applyInsertion(newNode, at: idx + 1, origin: .localPolicy)
+    return newNode
   }
 
-  /// 인덱스 위치의 노드를 제거합니다.
-  func removeNode(at index: Int) {
-    guard nodes.indices.contains(index) else { return }
-    let node = nodes[index]
-    remove(node, at: index, emitStoreEvent: true)
+  /// 새 노드를 삽입합니다.
+  func insert(node: BlockNode, at index: Int) {
+    applyInsertion(node, at: index, origin: .localPolicy)
   }
 
-  /// 노드 내용이 수정되었음을 수동으로 알립니다.
-  func notifyUpdate(of node: BlockNode) {
-    guard let idx = index(of: node) else { return }
-    enqueueNodeEvent(.update(node: nodes[idx], index: idx))
-    sendStoreEvent(.updated(nodes[idx], at: idx))
+  /// 노드를 제거합니다.
+  func remove(nodeID: UUID) {
+    guard let idx = index(ofNodeID: nodeID) else { return }
+    let node = nodes[idx]
+    applyRemoval(node, at: idx, origin: .localPolicy)
   }
 
-  /// 두 노드 병합 사실을 스토어에 전달합니다.
-  func notifyMerge(from source: BlockNode, into target: BlockNode) {
-    sendStoreEvent(.merged(source: source, target: target))
+  /// 노드 변경 사항을 알립니다.
+  func update(node: BlockNode) {
+    applyUpdate(node, at: nil, origin: .localPolicy)
   }
+
+  /// 지정 노드를 직전 노드와 병합합니다.
+  func merge(nodeID: UUID, into previousID: UUID) {
+		guard let sourceIndex = index(ofNodeID: nodeID), sourceIndex > 0 else { return }
+		let previousIndex = sourceIndex - 1
+		guard nodes.indices.contains(previousIndex), nodes[previousIndex].id == previousID else { return }
+		
+		let previous = nodes[previousIndex]
+		let source = nodes[sourceIndex]
+		previous.text += source.text
+		
+		applyRemoval(source, at: sourceIndex, origin: .localPolicy)
+		applyUpdate(previous, at: previousIndex, origin: .localPolicy)
+		publishStoreEvent(.merged(source: source, target: previous), origin: .localPolicy)
+  }
+}
+
+extension EditorBlockManager {
+	/// 주어진 식별자를 가진 노드의 인덱스를 반환합니다.
+	fileprivate func index(ofNodeID id: UUID) -> Int? {
+		nodes.firstIndex(where: { $0.id == id })
+	}
+	
 }

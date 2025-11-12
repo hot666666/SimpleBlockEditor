@@ -9,7 +9,7 @@ import Foundation
 
 struct DefaultBlockEditingPolicy: BlockEditingPolicy {
   /// 키 이벤트를 해석해 현재 컨텍스트 기반으로 실행할 에디터 명령을 생성합니다.
-  func makeEditorCommand(for event: EditorKeyEvent, node: BlockNode, in context: BlockEditingContextProtocol) -> EditorCommand? {
+  func makeEditorCommand(for event: EditorKeyEvent, node: BlockNode, in context: BlockEditingContext) -> EditorCommand? {
     switch event {
     case .spaceKey(let info):
       return handleSpace(info: info, node: node, context: context)
@@ -40,22 +40,22 @@ struct DefaultBlockEditingPolicy: BlockEditingPolicy {
 
 extension DefaultBlockEditingPolicy {
   /// 공백 트리거를 감지해 블록 종류를 변경합니다.
-  fileprivate func handleSpace(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
+  fileprivate func handleSpace(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
     guard let res = matchSpaceTrigger(text: node.text, caretUTF16: info.utf16) else {
       return nil
     }
 
     node.kind = res.kind
-    context.notifyUpdate(of: node)
+    context.update(node: node)
 
     return EditorCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
   }
 
   /// 엔터 입력을 처리해 블록을 나누거나 새 블록을 생성합니다.
   fileprivate func handleEnter(
-    info: BlockCaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContextProtocol
+    info: BlockCaretInfo, isTail _: Bool, node: BlockNode, context: BlockEditingContext
   ) -> EditorCommand? {
-    guard let index = context.index(of: node) else { return nil }
+    guard context.index(of: node.id) != nil else { return nil }
 
     let nextKind: BlockKind
     switch node.kind {
@@ -67,42 +67,26 @@ extension DefaultBlockEditingPolicy {
       nextKind = .paragraph
     }
 
-    let insertionIndex = index + 1
-
-    if !isTail {
-      let tail = node.text.cutSuffix(fromGrapheme: info.grapheme)
-      context.notifyUpdate(of: node)
-
-      let newNode = BlockNode(kind: nextKind, text: tail)
-      context.insertNode(newNode, at: insertionIndex)
-
-      return EditorCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
-    } else {
-      let newNode = BlockNode(kind: nextKind)
-      context.insertNode(newNode, at: insertionIndex)
-
-      return EditorCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
-    }
+    guard let newNode = context.split(nodeID: node.id, atUTF16: info.utf16) else { return nil }
+    newNode.kind = nextKind
+    return EditorCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
   }
 
   /// 블록 맨 앞에서 백스페이스를 눌렀을 때의 병합 로직입니다.
-  fileprivate func handleDeleteAtStart(node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
+  fileprivate func handleDeleteAtStart(node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
     if node.kind != .paragraph {
       node.kind = .paragraph
-      context.notifyUpdate(of: node)
+      context.update(node: node)
       return EditorCommand(setCaretUTF16: 0)
     }
 
-    guard let index = context.index(of: node),
-      let previous = context.previousNode(of: node)
+    guard context.index(of: node.id) != nil,
+      let previous = context.node(before: node.id)
     else { return nil }
 
     let caret = previous.text.count
 
-    context.removeNode(at: index)
-    previous.text += node.text
-    context.notifyUpdate(of: previous)
-    context.notifyMerge(from: node, into: previous)
+    context.merge(nodeID: node.id, into: previous.id)
 
     return EditorCommand(
       requestFocusChange: .otherNode(id: previous.id, caret: caret),
@@ -111,8 +95,8 @@ extension DefaultBlockEditingPolicy {
   }
 
   /// 윗줄 화살표 입력 시 이전 블록으로 포커스를 이동합니다.
-  fileprivate func handleArrowUp(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
-    guard let previous = context.previousNode(of: node) else { return nil }
+  fileprivate func handleArrowUp(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
+    guard let previous = context.node(before: node.id) else { return nil }
 
     let previousUTF16 = (previous.text as NSString).length
     let newCaret: Int
@@ -126,8 +110,8 @@ extension DefaultBlockEditingPolicy {
   }
 
   /// 아래 화살표 입력 시 다음 블록으로 포커스를 이동합니다.
-  fileprivate func handleArrowDown(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
-    guard let next = context.nextNode(of: node) else { return nil }
+  fileprivate func handleArrowDown(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
+    guard let next = context.node(after: node.id) else { return nil }
 
     let nextUTF16 = (next.text as NSString).length
     let newCaret = min(info.columnUTF16, nextUTF16)
@@ -136,16 +120,16 @@ extension DefaultBlockEditingPolicy {
   }
 
   /// 좌측 화살표 입력이 블록 앞에서 발생하면 이전 블록으로 이동합니다.
-  fileprivate func handleArrowLeft(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
-    guard info.isAtStart, let previous = context.previousNode(of: node) else { return nil }
+  fileprivate func handleArrowLeft(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
+    guard info.isAtStart, let previous = context.node(before: node.id) else { return nil }
 
     let previousUTF16 = (previous.text as NSString).length
     return EditorCommand(requestFocusChange: .otherNode(id: previous.id, caret: previousUTF16))
   }
 
   /// 우측 화살표 입력이 블록 끝에서 발생하면 다음 블록으로 이동합니다.
-  fileprivate func handleArrowRight(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
-    guard info.isAtTail, let next = context.nextNode(of: node) else { return nil }
+  fileprivate func handleArrowRight(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext) -> EditorCommand? {
+    guard info.isAtTail, let next = context.node(after: node.id) else { return nil }
 
     return EditorCommand(requestFocusChange: .otherNode(id: next.id, caret: 0))
   }

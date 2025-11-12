@@ -29,7 +29,7 @@ struct BlockManagerObservationTests {
     #expect(manager.observeNodeEvents().isEmpty)
 
     fresh.text = "Edited"
-    manager.notifyUpdate(of: fresh)
+    manager.update(node: fresh)
 
     let updateEvents = manager.observeNodeEvents()
     guard let update = updateEvents.last else {

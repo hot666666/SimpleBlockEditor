@@ -143,7 +143,7 @@ extension BlockEditorViewController {
 
 extension BlockEditorViewController: BlockRowCoordinatorDelegate {
   func blockRowCoordinator(_ coordinator: BlockRowCoordinator, notifyUpdateOf node: BlockNode) {
-    manager.notifyUpdate(of: node)
+    manager.update(node: node)
   }
 
   func blockRowCoordinator(_ coordinator: BlockRowCoordinator, requestFocusChange change: EditorFocusEvent) {
@@ -151,6 +151,6 @@ extension BlockEditorViewController: BlockRowCoordinatorDelegate {
   }
 
   func blockRowCoordinator(_ coordinator: BlockRowCoordinator, commandFor event: EditorKeyEvent, node: BlockNode) -> EditorCommand? {
-    manager.editCommand(for: event, node: node)
+    manager.command(for: event, node: node)
   }
 }

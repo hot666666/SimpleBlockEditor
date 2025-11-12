@@ -15,7 +15,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 1, string: "#")
 
-    guard let command = manager.editCommand(for: .spaceKey(info: info), node: node) else {
+    guard let command = manager.command(for: .spaceKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for heading trigger")
       return
     }
@@ -32,7 +32,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "[x]")
 
-    guard let command = manager.editCommand(for: .spaceKey(info: info), node: node) else {
+    guard let command = manager.command(for: .spaceKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for todo trigger")
       return
     }
@@ -49,7 +49,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 4, string: "Task")
 
-    guard let command = manager.editCommand(for: .returnKey(info: info, isAtTail: true), node: node) else {
+    guard let command = manager.command(for: .returnKey(info: info, isAtTail: true), node: node) else {
       Issue.record("Expected EditorCommand for enter at tail")
       return
     }
@@ -69,7 +69,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 5, string: "HelloWorld")
 
-    guard let command = manager.editCommand(for: .returnKey(info: info, isAtTail: false), node: node) else {
+    guard let command = manager.command(for: .returnKey(info: info, isAtTail: false), node: node) else {
       Issue.record("Expected EditorCommand for enter in middle")
       return
     }
@@ -89,7 +89,7 @@ struct BlockManagerPolicyTests {
     let node = BlockNode(kind: .heading(level: 2), text: "Title")
     let manager = await makeManager(nodes: [node])
 
-    guard let command = manager.editCommand(for: .backspaceAtStart, node: node) else {
+    guard let command = manager.command(for: .backspaceAtStart, node: node) else {
       Issue.record("Expected EditorCommand for style reset")
       return
     }
@@ -104,7 +104,7 @@ struct BlockManagerPolicyTests {
     let node = BlockNode(kind: .paragraph, text: "World")
     let manager = await makeManager(nodes: [prev, node])
 
-    guard let command = manager.editCommand(for: .backspaceAtStart, node: node) else {
+    guard let command = manager.command(for: .backspaceAtStart, node: node) else {
       Issue.record("Expected EditorCommand for merge")
       return
     }
@@ -123,7 +123,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 0, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowLeftKey(info: info), node: node) else {
+    guard let command = manager.command(for: .arrowLeftKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for arrow left")
       return
     }
@@ -139,7 +139,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 7, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowRightKey(info: info), node: node) else {
+    guard let command = manager.command(for: .arrowRightKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for arrow right")
       return
     }
@@ -155,7 +155,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowUpKey(info: info), node: node) else {
+    guard let command = manager.command(for: .arrowUpKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for arrow up")
       return
     }
@@ -172,7 +172,7 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowDownKey(info: info), node: node) else {
+    guard let command = manager.command(for: .arrowDownKey(info: info), node: node) else {
       Issue.record("Expected EditorCommand for arrow down")
       return
     }
@@ -194,7 +194,7 @@ struct BlockManagerPolicyTests {
     }
 
     #expect(command.removePrefixUTF16 == 2)
-    #expect(context.notifiedUpdates.contains { $0 === node })
+    #expect(context.updatedNodes.contains { $0 === node })
   }
 
   @Test("Policy inserts new node via context when splitting")
@@ -209,12 +209,13 @@ struct BlockManagerPolicyTests {
       return
     }
 
+    #expect(context.splitRequests.count == 1)
     #expect(context.insertedNodes.count == 1)
     let inserted = context.insertedNodes[0]
     #expect(inserted.index == 1)
     #expect(inserted.node.kind == .paragraph)
     #expect(inserted.node.text == "World")
-    #expect(context.notifiedUpdates.contains { $0 === node })
+    #expect(context.updatedNodes.contains { $0 === node })
   }
 
   @Test("Policy removes and merges nodes through context on delete")
@@ -229,10 +230,12 @@ struct BlockManagerPolicyTests {
       return
     }
 
-    #expect(context.removedIndices == [1])
-    #expect(context.notifiedUpdates.contains { $0 === head })
-    let mergePairs = context.notifiedMerges.map { ($0.source, $0.target) }
-    #expect(mergePairs.contains { $0.0 === tail && $0.1 === head })
+    #expect(context.nodes.count == 1)
+    #expect(!context.nodes.contains { $0 === tail })
+    #expect(context.removedNodeIDs.isEmpty)
+    #expect(context.updatedNodes.contains { $0 === head })
+    let mergePairs = context.mergeRequests
+    #expect(mergePairs.contains { $0.sourceID == tail.id && $0.targetID == head.id })
     #expect(head.text == "HelloWorld")
   }
 }
@@ -256,49 +259,78 @@ private func singleLineCaret(location: Int, string: String, selectionLength: Int
   )
 }
 
-private final class MockContext: BlockEditingContextProtocol {
+private final class MockContext: BlockEditingContext {
   var nodes: [BlockNode]
   var insertedNodes: [(node: BlockNode, index: Int)] = []
-  var removedIndices: [Int] = []
-  var notifiedUpdates: [BlockNode] = []
-  var notifiedMerges: [(source: BlockNode, target: BlockNode)] = []
+  var removedNodeIDs: [UUID] = []
+  var updatedNodes: [BlockNode] = []
+  var mergeRequests: [(sourceID: UUID, targetID: UUID)] = []
+  var splitRequests: [(nodeID: UUID, offset: Int)] = []
 
   init(nodes: [BlockNode]) {
     self.nodes = nodes
   }
 
-  func index(of node: BlockNode) -> Int? {
-    nodes.firstIndex { $0 === node }
+  func index(of nodeID: UUID) -> Int? {
+    nodes.firstIndex { $0.id == nodeID }
   }
 
-  func previousNode(of node: BlockNode) -> BlockNode? {
-    guard let idx = index(of: node), idx > 0 else { return nil }
+  func node(before nodeID: UUID) -> BlockNode? {
+    guard let idx = index(of: nodeID), idx > 0 else { return nil }
     return nodes[idx - 1]
   }
 
-  func nextNode(of node: BlockNode) -> BlockNode? {
-    guard let idx = index(of: node), idx < nodes.count - 1 else { return nil }
+  func node(after nodeID: UUID) -> BlockNode? {
+    guard let idx = index(of: nodeID), idx < nodes.count - 1 else { return nil }
     return nodes[idx + 1]
   }
 
-  func insertNode(_ node: BlockNode, at index: Int) {
+  func split(nodeID: UUID, atUTF16 offset: Int) -> BlockNode? {
+    splitRequests.append((nodeID, offset))
+    guard let idx = index(of: nodeID) else { return nil }
+    let node = nodes[idx]
+    let nsText = node.text as NSString
+    let length = nsText.length
+    let clamped = max(0, min(offset, length))
+    let head = nsText.substring(to: clamped)
+    let tail = nsText.substring(from: clamped)
+
+    node.text = head
+    updatedNodes.append(node)
+
+    let newNode = BlockNode(kind: node.kind, text: tail)
+    let insertionIndex = idx + 1
+    nodes.insert(newNode, at: insertionIndex)
+    insertedNodes.append((newNode, insertionIndex))
+    return newNode
+  }
+
+  func insert(node: BlockNode, at index: Int) {
     let clamped = max(0, min(index, nodes.count))
     nodes.insert(node, at: clamped)
     insertedNodes.append((node, clamped))
   }
 
-  func removeNode(at index: Int) {
-    guard nodes.indices.contains(index) else { return }
-    nodes.remove(at: index)
-    removedIndices.append(index)
+  func remove(nodeID: UUID) {
+    guard let idx = index(of: nodeID) else { return }
+    nodes.remove(at: idx)
+    removedNodeIDs.append(nodeID)
   }
 
-  func notifyUpdate(of node: BlockNode) {
-    notifiedUpdates.append(node)
+  func update(node: BlockNode) {
+    updatedNodes.append(node)
   }
 
-  func notifyMerge(from source: BlockNode, into target: BlockNode) {
-    notifiedMerges.append((source, target))
+  func merge(nodeID: UUID, into previousID: UUID) {
+    mergeRequests.append((nodeID, previousID))
+    guard let sourceIndex = index(of: nodeID), sourceIndex > 0 else { return }
+    let previousIndex = sourceIndex - 1
+    guard nodes[previousIndex].id == previousID else { return }
+
+    let source = nodes[sourceIndex]
+    nodes[previousIndex].text += source.text
+    updatedNodes.append(nodes[previousIndex])
+    nodes.remove(at: sourceIndex)
   }
 }
 

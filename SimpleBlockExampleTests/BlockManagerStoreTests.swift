@@ -58,8 +58,8 @@ struct BlockManagerStoreTests {
     #expect(index == 1)
   }
 
-  @Test("notifyUpdate emits store update at index")
-  func notifyUpdateEmitsStoreUpdate() async {
+  @Test("update emits store update at index")
+  func updateEmitsStoreUpdate() async {
     let node = BlockNode(kind: .paragraph, text: "Draft")
     let store = SpyBlockStore(load: [node])
     let manager = EditorBlockManager(
@@ -70,7 +70,7 @@ struct BlockManagerStoreTests {
     _ = await store.waitForLoad()
     var iterator = store.eventsIterator()
     node.text = "Updated"
-    manager.notifyUpdate(of: node)
+    manager.update(node: node)
 
     guard let event = await awaitNext(&iterator) else {
       Issue.record("Expected updated event")
@@ -87,8 +87,8 @@ struct BlockManagerStoreTests {
     #expect(index == 0)
   }
 
-  @Test("removeNode emits store removal")
-  func removeNodeEmitsStoreRemoval() async {
+  @Test("remove emits store removal")
+  func removeEmitsStoreRemoval() async {
     let node = BlockNode(kind: .paragraph, text: "Delete me")
     let store = SpyBlockStore(load: [node])
     let manager = EditorBlockManager(
@@ -98,7 +98,7 @@ struct BlockManagerStoreTests {
 
     _ = await store.waitForLoad()
     var iterator = store.eventsIterator()
-    manager.removeNode(at: 0)
+    manager.remove(nodeID: node.id)
 
     guard let event = await awaitNext(&iterator) else {
       Issue.record("Expected removed event")
@@ -114,8 +114,8 @@ struct BlockManagerStoreTests {
     #expect(index == 0)
   }
 
-  @Test("notifyMerge emits store merge")
-  func notifyMergeEmitsStoreMerge() async {
+  @Test("merge emits store merge")
+  func mergeEmitsStoreMerge() async {
     let head = BlockNode(kind: .paragraph, text: "Hello")
     let tail = BlockNode(kind: .paragraph, text: "World")
     let store = SpyBlockStore(load: [head, tail])
@@ -126,14 +126,21 @@ struct BlockManagerStoreTests {
 
     _ = await store.waitForLoad()
     var iterator = store.eventsIterator()
-    manager.notifyMerge(from: tail, into: head)
+    manager.merge(nodeID: tail.id, into: head.id)
 
-    guard let event = await awaitNext(&iterator) else {
-      Issue.record("Expected merged event")
-      return
+    var mergedEvent: BlockStoreEvent?
+    for _ in 0..<3 {
+      guard let next = await awaitNext(&iterator) else {
+        Issue.record("Expected merged event")
+        return
+      }
+      if case .merged = next {
+        mergedEvent = next
+        break
+      }
     }
 
-    guard case .merged(let source, let target) = event else {
+    guard case .merged(let source, let target) = mergedEvent else {
       Issue.record("Expected merged event")
       return
     }
@@ -169,7 +176,7 @@ struct BlockManagerStoreTests {
     #expect(snapshotNodes.count == 1)
 
     node.text = "Edited"
-    manager.notifyUpdate(of: node)
+    manager.update(node: node)
 
     guard let event = await awaitNext(&iterator) else {
       Issue.record("Expected update for default node")
