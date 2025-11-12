@@ -53,8 +53,18 @@ final class BlockRowView: NSView {
 
   /// 텍스트 스타일을 적용하고 레이아웃을 최신화합니다.
   func apply(style: EditorStyle) {
+    let needsIntrinsicUpdate = self.style.font != style.font
+
     self.style = style
     style.apply(to: textView)
+
+    if needsIntrinsicUpdate {
+      if let container = textView.textContainer {
+        textView.layoutManager?.ensureLayout(for: container)
+      }
+      textView.invalidateIntrinsicContentSize()
+    }
+
     updateLayout(for: style)
   }
 
