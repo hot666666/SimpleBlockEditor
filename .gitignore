@@ -63,3 +63,6 @@ fastlane/test_output
 
 # AI
 AGENTS.md
+
+# etc
+diagram.svg
