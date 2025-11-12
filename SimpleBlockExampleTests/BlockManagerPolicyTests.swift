@@ -15,8 +15,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 1, string: "#")
 
-    guard let command = manager.editCommand(for: .space(info), node: node) else {
-      Issue.record("Expected EditCommand for heading trigger")
+    guard let command = manager.editCommand(for: .spaceKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for heading trigger")
       return
     }
 
@@ -32,8 +32,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "[x]")
 
-    guard let command = manager.editCommand(for: .space(info), node: node) else {
-      Issue.record("Expected EditCommand for todo trigger")
+    guard let command = manager.editCommand(for: .spaceKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for todo trigger")
       return
     }
 
@@ -49,8 +49,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 4, string: "Task")
 
-    guard let command = manager.editCommand(for: .enter(info, true), node: node) else {
-      Issue.record("Expected EditCommand for enter at tail")
+    guard let command = manager.editCommand(for: .returnKey(info: info, isAtTail: true), node: node) else {
+      Issue.record("Expected EditorCommand for enter at tail")
       return
     }
 
@@ -69,8 +69,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 5, string: "HelloWorld")
 
-    guard let command = manager.editCommand(for: .enter(info, false), node: node) else {
-      Issue.record("Expected EditCommand for enter in middle")
+    guard let command = manager.editCommand(for: .returnKey(info: info, isAtTail: false), node: node) else {
+      Issue.record("Expected EditorCommand for enter in middle")
       return
     }
 
@@ -89,8 +89,8 @@ struct BlockManagerPolicyTests {
     let node = BlockNode(kind: .heading(level: 2), text: "Title")
     let manager = await makeManager(nodes: [node])
 
-    guard let command = manager.editCommand(for: .deleteAtStart, node: node) else {
-      Issue.record("Expected EditCommand for style reset")
+    guard let command = manager.editCommand(for: .backspaceAtStart, node: node) else {
+      Issue.record("Expected EditorCommand for style reset")
       return
     }
 
@@ -104,8 +104,8 @@ struct BlockManagerPolicyTests {
     let node = BlockNode(kind: .paragraph, text: "World")
     let manager = await makeManager(nodes: [prev, node])
 
-    guard let command = manager.editCommand(for: .deleteAtStart, node: node) else {
-      Issue.record("Expected EditCommand for merge")
+    guard let command = manager.editCommand(for: .backspaceAtStart, node: node) else {
+      Issue.record("Expected EditorCommand for merge")
       return
     }
 
@@ -123,8 +123,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 0, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowLeft(info), node: node) else {
-      Issue.record("Expected EditCommand for arrow left")
+    guard let command = manager.editCommand(for: .arrowLeftKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for arrow left")
       return
     }
 
@@ -139,8 +139,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 7, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowRight(info), node: node) else {
-      Issue.record("Expected EditCommand for arrow right")
+    guard let command = manager.editCommand(for: .arrowRightKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for arrow right")
       return
     }
 
@@ -155,8 +155,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowUp(info), node: node) else {
-      Issue.record("Expected EditCommand for arrow up")
+    guard let command = manager.editCommand(for: .arrowUpKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for arrow up")
       return
     }
 
@@ -172,8 +172,8 @@ struct BlockManagerPolicyTests {
 
     let info = singleLineCaret(location: 3, string: "Current")
 
-    guard let command = manager.editCommand(for: .arrowDown(info), node: node) else {
-      Issue.record("Expected EditCommand for arrow down")
+    guard let command = manager.editCommand(for: .arrowDownKey(info: info), node: node) else {
+      Issue.record("Expected EditorCommand for arrow down")
       return
     }
 
@@ -188,8 +188,8 @@ struct BlockManagerPolicyTests {
     let policy = DefaultBlockEditingPolicy()
 
     let info = singleLineCaret(location: 1, string: "#")
-    guard let command = policy.makeEditCommand(for: .space(info), node: node, in: context) else {
-      Issue.record("Expected EditCommand for heading trigger")
+    guard let command = policy.makeEditorCommand(for: .spaceKey(info: info), node: node, in: context) else {
+      Issue.record("Expected EditorCommand for heading trigger")
       return
     }
 
@@ -204,8 +204,8 @@ struct BlockManagerPolicyTests {
     let policy = DefaultBlockEditingPolicy()
 
     let info = singleLineCaret(location: 5, string: "HelloWorld")
-    guard policy.makeEditCommand(for: .enter(info, false), node: node, in: context) != nil else {
-      Issue.record("Expected EditCommand for enter split")
+    guard policy.makeEditorCommand(for: .returnKey(info: info, isAtTail: false), node: node, in: context) != nil else {
+      Issue.record("Expected EditorCommand for enter split")
       return
     }
 
@@ -224,8 +224,8 @@ struct BlockManagerPolicyTests {
     let context = MockContext(nodes: [head, tail])
     let policy = DefaultBlockEditingPolicy()
 
-    guard policy.makeEditCommand(for: .deleteAtStart, node: tail, in: context) != nil else {
-      Issue.record("Expected EditCommand for delete at start")
+    guard policy.makeEditorCommand(for: .backspaceAtStart, node: tail, in: context) != nil else {
+      Issue.record("Expected EditorCommand for delete at start")
       return
     }
 
@@ -239,10 +239,10 @@ struct BlockManagerPolicyTests {
 
 // MARK: - Helpers
 
-private func singleLineCaret(location: Int, string: String, selectionLength: Int = 0) -> CaretInfo {
+private func singleLineCaret(location: Int, string: String, selectionLength: Int = 0) -> BlockCaretInfo {
   let length = (string as NSString).length
   let selection = NSRange(location: location, length: selectionLength)
-  return CaretInfo(
+  return BlockCaretInfo(
     selection: selection,
     utf16: location,
     grapheme: location,

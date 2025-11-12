@@ -1,5 +1,5 @@
 //
-//  CaretInfo.swift
+//  BlockCaretInfo.swift
 //  SimpleBlockExample
 //
 //  Created by hs on 11/11/25.
@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - 입력 직전/직후 커서 정보 (utf16은 Cocoa 기준, grapheme은 Swift String 기준)
 
-struct CaretInfo {
+struct BlockCaretInfo {
   let selection: NSRange
   let utf16: Int
   let grapheme: Int

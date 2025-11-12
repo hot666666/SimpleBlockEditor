@@ -8,8 +8,8 @@
 import AppKit
 
 enum BlockRowKeyAction {
-  case policy(EditorEvent)
-  case insertSpace(info: CaretInfo)
+  case policy(EditorKeyEvent)
+  case insertSpace(info: BlockCaretInfo)
   case softBreak
 }
 
@@ -23,14 +23,14 @@ struct BlockRowInputRouter {
         return .softBreak
       }
       let info = textView.caretInfo()
-      return .policy(.enter(info, info.isAtTail))
+      return .policy(.returnKey(info: info, isAtTail: info.isAtTail))
 
     case .space:
       return .insertSpace(info: textView.caretInfo())
 
     case .delete:
       let info = textView.caretInfo()
-      return info.isAtStart ? .policy(.deleteAtStart) : nil
+      return info.isAtStart ? .policy(.backspaceAtStart) : nil
 
     case .up:
       return actionForVertical(direction: .up, textView: textView)
@@ -46,9 +46,7 @@ struct BlockRowInputRouter {
     }
   }
 
-  private func actionForVertical(direction: VerticalDir, textView: BlockTextView)
-    -> BlockRowKeyAction?
-  {
+  private func actionForVertical(direction: VerticalDir, textView: BlockTextView) -> BlockRowKeyAction? {
     let info = textView.caretInfo()
 
     if info.hasSelection {
@@ -64,13 +62,11 @@ struct BlockRowInputRouter {
       break
     }
 
-    let event: EditorEvent = (direction == .up) ? .arrowUp(info) : .arrowDown(info)
+    let event: EditorKeyEvent = (direction == .up) ? .arrowUpKey(info: info) : .arrowDownKey(info: info)
     return .policy(event)
   }
 
-  private func actionForHorizontal(direction: HorizontalDir, textView: BlockTextView)
-    -> BlockRowKeyAction?
-  {
+  private func actionForHorizontal(direction: HorizontalDir, textView: BlockTextView) -> BlockRowKeyAction? {
     let info = textView.caretInfo()
 
     if info.hasSelection {
@@ -79,55 +75,12 @@ struct BlockRowInputRouter {
 
     switch direction {
     case .left where info.isAtStart:
-      return .policy(.arrowLeft(info))
+      return .policy(.arrowLeftKey(info: info))
     case .right where info.isAtTail:
-      return .policy(.arrowRight(info))
+      return .policy(.arrowRightKey(info: info))
     default:
       return nil
     }
-  }
-}
-
-final class BlockRowCommandApplier {
-  private unowned let textView: BlockTextView
-  private let beforeFocusChange: () -> Void
-  private let focusHandler: (FocusChange) -> Void
-
-  init(
-    textView: BlockTextView,
-    beforeFocusChange: @escaping () -> Void,
-    focusHandler: @escaping (FocusChange) -> Void
-  ) {
-    self.textView = textView
-    self.beforeFocusChange = beforeFocusChange
-    self.focusHandler = focusHandler
-  }
-
-  func apply(_ command: EditCommand, groupTextEdits: Bool = false) {
-    applyTextEdits(from: command)
-    applyCaretPosition(from: command)
-
-    if let change = command.requestFocusChange {
-      beforeFocusChange()
-      focusHandler(change)
-    }
-  }
-
-  private func applyTextEdits(from command: EditCommand) {
-    if let replacement = command.replaceRange {
-      textView.edit(range: replacement.range, replacement: replacement.text)
-    }
-    if let insertion = command.insertText {
-      textView.edit(range: textView.selectedRange(), replacement: insertion)
-    }
-    if let remove = command.removePrefixUTF16, remove > 0 {
-      textView.removePrefix(utf16: remove)
-    }
-  }
-
-  private func applyCaretPosition(from command: EditCommand) {
-    guard let caret = command.setCaretUTF16 else { return }
-    textView.moveCaret(utf16: caret)
   }
 }
 

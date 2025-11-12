@@ -8,11 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-  @State private var manager: BlockManager
-
-  init(store: BlockStore? = nil) {
-    self._manager = State(wrappedValue: BlockManager(store: store))
-  }
+  @State private var manager = BlockManager()
 
   var body: some View {
     BlockEditorHost(manager: manager)

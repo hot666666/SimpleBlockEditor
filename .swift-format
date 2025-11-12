@@ -1,4 +1,10 @@
 {
   "version": 1,
-  "indentationWidth": 2
+  "lineLength": 120,
+  "indentation": {
+    "spaces": 2
+  },
+  "rules": {
+    "OneVariableDeclarationPerLine": true
+  }
 }

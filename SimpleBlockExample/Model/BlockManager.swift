@@ -10,19 +10,19 @@ import Observation
 
 @Observable
 final class BlockManager {
-  /// Edit policy & Store
   @ObservationIgnored private let policy: any BlockEditingPolicy
   @ObservationIgnored private let store: BlockStore?
-  /// Event clocks
+  
+	/// Observation event clock
   private var nodeEventClock: UInt64 = 0
 
   @ObservationIgnored private var bootstrapTask: Task<Void, Never>?
   @ObservationIgnored private var nodes: [BlockNode] = [.init(kind: .paragraph, text: "")]
   @ObservationIgnored private var focusedNodeID: UUID?
-  @ObservationIgnored private var pendingNodeEvents: [BlockNodeEvent] = []
+  @ObservationIgnored private var pendingNodeEvents: [EditorBlockEvent] = []
 
   init(
-    store: BlockStore? = nil,
+    store: BlockStore? = DefaultBlockStore(),
     policy: any BlockEditingPolicy = DefaultBlockEditingPolicy()
   ) {
     self.policy = policy
@@ -44,16 +44,16 @@ final class BlockManager {
     nodes.enumerated().forEach(body)
   }
 
-  func editCommand(for event: EditorEvent, node: BlockNode) -> EditCommand? {
-    policy.makeEditCommand(for: event, node: node, in: self)
+  func editCommand(for event: EditorKeyEvent, node: BlockNode) -> EditorCommand? {
+    policy.makeEditorCommand(for: event, node: node, in: self)
   }
 
-  func applyFocusChange(from command: EditCommand) {
+  func applyFocusChange(from command: EditorCommand) {
     guard let focus = command.requestFocusChange else { return }
     applyFocusChange(focus)
   }
 
-  func applyFocusChange(_ focus: FocusChange) {
+  func applyFocusChange(_ focus: EditorFocusEvent) {
     switch focus {
     case .otherNode(let id, _):
       focusedNodeID = id
@@ -67,7 +67,7 @@ final class BlockManager {
     insert(node, at: nodes.count, emitStoreEvent: true)
   }
 
-  func observeNodeEvents() -> [BlockNodeEvent] {
+  func observeNodeEvents() -> [EditorBlockEvent] {
     /// withObservationTracking 클로저 내에서 access를 호출하여, nodeEventClock에 대한 의존성을 기록
     access(keyPath: \.nodeEventClock)
     if pendingNodeEvents.isEmpty { return [] }
@@ -78,7 +78,7 @@ final class BlockManager {
 }
 
 extension BlockManager {
-  fileprivate func enqueueNodeEvent(_ event: BlockNodeEvent) {
+  fileprivate func enqueueNodeEvent(_ event: EditorBlockEvent) {
     pendingNodeEvents.append(event)
     withMutation(keyPath: \.nodeEventClock) {
       /// 숫자가 최댓값을 넘어가면 다시 0부터 시작
@@ -86,7 +86,7 @@ extension BlockManager {
     }
   }
 
-  fileprivate func enqueueFocusEvent(_ change: FocusChange) {
+  fileprivate func enqueueFocusEvent(_ change: EditorFocusEvent) {
     enqueueNodeEvent(.focus(change))
   }
 }

@@ -61,7 +61,7 @@ struct BlockManagerObservationTests {
     }
 
     manager.applyFocusChange(
-      from: EditCommand(requestFocusChange: .otherNode(id: node.id, caret: 2)))
+      from: EditorCommand(requestFocusChange: .otherNode(id: node.id, caret: 2)))
 
     let nodeEvents = manager.observeNodeEvents()
     guard let last = nodeEvents.last else {

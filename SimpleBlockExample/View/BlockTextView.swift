@@ -98,7 +98,8 @@ extension BlockTextView {
     string.utf16.count
   }
 
-  func edit(range: NSRange, replacement: String) {
+  func edit(range: NSRange?, replacement: String) {
+    let range = range ?? selectedRange()
     guard shouldChangeText(in: range, replacementString: replacement) else { return }
     /// textStorage로 text보다 더 효율적으로 편집 수행
     textStorage?.replaceCharacters(in: range, with: replacement)
@@ -106,11 +107,11 @@ extension BlockTextView {
     didChangeText()
   }
 
-  func removePrefix(utf16 n: Int) {
-    guard n > 0 else { return }
+  func removePrefix(utf16 lengthToRemove: Int) {
+    guard lengthToRemove > 0 else { return }
     let cur = lengthUTF16
     guard cur > 0 else { return }
-    let len = min(n, cur)
+    let len = min(lengthToRemove, cur)
 
     edit(range: NSRange(location: 0, length: len), replacement: "")
   }
@@ -122,15 +123,15 @@ extension BlockTextView {
 
   // MARK: - Convenience
 
-  func caretInfo() -> CaretInfo {
-    CaretInfo.make(from: self)
+  func caretInfo() -> BlockCaretInfo {
+    BlockCaretInfo.make(from: self)
   }
 }
 
 // MARK: - CaretInfo support
 
-extension CaretInfo {
-  fileprivate static func make(from textView: NSTextView) -> CaretInfo {
+extension BlockCaretInfo {
+  fileprivate static func make(from textView: NSTextView) -> BlockCaretInfo {
     let selection = textView.selectedRange()
     let string = textView.string
     let utf16Length = (string as NSString).length
@@ -176,7 +177,7 @@ extension CaretInfo {
     let caretIndex = String.Index(utf16Offset: caretUTF16, in: string)
     let columnGrapheme = string.distance(from: lineStartIndex, to: caretIndex)
 
-    return CaretInfo(
+    return BlockCaretInfo(
       selection: selection,
       utf16: caretUTF16,
       grapheme: grapheme,

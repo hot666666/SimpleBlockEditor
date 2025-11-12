@@ -12,7 +12,7 @@ struct EditorStyle: Equatable {
     static let textInsets = NSSize(width: 0, height: 6)
     static let gutterSpacing: CGFloat = 2
     static let gutterSize: CGSize = {
-      let baseFont = BlockKind.paragraph.font
+      let baseFont = BlockNodeStyle(kind: .paragraph).makeAppKitFont()
       return CGSize(width: 18, height: baseFont.blockLineHeight)
     }()
   }
@@ -46,8 +46,9 @@ struct EditorStyle: Equatable {
     self.gutterSize = gutterSize
   }
 
-  static func style(for kind: BlockKind) -> EditorStyle {
-    let font = kind.font
+  static func style(for kind: BlockKind, nodeStyle: BlockNodeStyle? = nil) -> EditorStyle {
+    let nodeStyle = nodeStyle ?? BlockNodeStyle(kind: kind)
+    let font = nodeStyle.makeAppKitFont()
     let padding = kind.usesGutter ? Self.gutterPadding(for: font) : 0
     return EditorStyle(
       font: font,

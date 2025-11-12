@@ -9,10 +9,10 @@ import AppKit
 
 protocol BlockRowControllerDelegate: AnyObject {
   func rowController(_ controller: BlockRowController, notifyUpdateOf node: BlockNode)
-  func rowController(_ controller: BlockRowController, requestFocusChange change: FocusChange)
+  func rowController(_ controller: BlockRowController, requestFocusChange change: EditorFocusEvent)
   func rowController(
-    _ controller: BlockRowController, commandFor event: EditorEvent, node: BlockNode
-  ) -> EditCommand?
+    _ controller: BlockRowController, commandFor event: EditorKeyEvent, node: BlockNode
+  ) -> EditorCommand?
 }
 
 final class BlockRowController: NSObject {
@@ -51,7 +51,7 @@ final class BlockRowController: NSObject {
   func bind(node: BlockNode) {
     self.node = node
 
-    let style = EditorStyle.style(for: node.kind)
+    let style = EditorStyle.style(for: node.kind, nodeStyle: node.style)
     view.apply(style: style)
     view.updateGutter(
       kind: node.kind,
@@ -152,8 +152,8 @@ extension BlockRowController {
     case .insertSpace(let info):
       textView.insertText(" ", replacementRange: info.selection)
 
-      if let cmd = delegate?.rowController(self, commandFor: .space(info), node: node) {
-        commandApplier.apply(cmd, groupTextEdits: true)
+      if let cmd = delegate?.rowController(self, commandFor: .spaceKey(info: info), node: node) {
+        commandApplier.apply(cmd)
       }
       return true
 

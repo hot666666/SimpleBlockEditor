@@ -17,7 +17,7 @@ struct BlockRowInputRouterTests {
     }
 
     guard
-      case .policy(.enter(let info, let isTail))? = router.action(for: event, textView: textView)
+      case .policy(.returnKey(let info, let isTail))? = router.action(for: event, textView: textView)
     else {
       Issue.record("Expected enter event")
       return
@@ -42,7 +42,7 @@ struct BlockRowInputRouterTests {
     }
 
     guard
-      case .policy(.enter(let info, let isTail))? = router.action(for: event, textView: textView)
+      case .policy(.returnKey(let info, let isTail))? = router.action(for: event, textView: textView)
     else {
       Issue.record("Expected enter event")
       return
@@ -89,7 +89,7 @@ struct BlockRowInputRouterTests {
       return
     }
 
-    guard case .policy(.arrowLeft(let info))? = router.action(for: event, textView: textView) else {
+    guard case .policy(.arrowLeftKey(let info))? = router.action(for: event, textView: textView) else {
       Issue.record("Expected arrowLeft policy")
       return
     }
@@ -113,24 +113,25 @@ struct BlockRowInputRouterTests {
       return
     }
 
-    guard case .policy(.arrowUp(let info))? = router.action(for: event, textView: textView) else {
+    guard case .policy(.arrowUpKey(let info))? = router.action(for: event, textView: textView) else {
       Issue.record("Expected arrowUp policy")
       return
     }
 
     expectMultiLineCaret(
       info,
-      selection: NSRange(location: 1, length: 0),
-      utf16: 1,
-      grapheme: 1,
-      stringLength: 11,
-      utf16Length: 11,
-      currentLineIndex: 0,
-      totalLineCount: 2,
-      lineRangeUTF16: NSRange(location: 0, length: 5),
-      columnUTF16: 1,
-      columnGrapheme: 1
-    )
+      expected: MultiLineCaretExpectation(
+        selection: NSRange(location: 1, length: 0),
+        utf16: 1,
+        grapheme: 1,
+        stringLength: 11,
+        utf16Length: 11,
+        currentLineIndex: 0,
+        totalLineCount: 2,
+        lineRangeUTF16: NSRange(location: 0, length: 5),
+        columnUTF16: 1,
+        columnGrapheme: 1
+      ))
   }
 }
 
@@ -164,7 +165,7 @@ private func makeKeyEvent(
 }
 
 private func expectSingleLineCaret(
-  _ info: CaretInfo,
+  _ info: BlockCaretInfo,
   selection: NSRange,
   caret: Int,
   stringLength: Int,
@@ -183,27 +184,28 @@ private func expectSingleLineCaret(
   isTail ? #expect(info.isAtTail) : #expect(!info.isAtTail)
 }
 
-private func expectMultiLineCaret(
-  _ info: CaretInfo,
-  selection: NSRange,
-  utf16: Int,
-  grapheme: Int,
-  stringLength: Int,
-  utf16Length: Int,
-  currentLineIndex: Int,
-  totalLineCount: Int,
-  lineRangeUTF16: NSRange,
-  columnUTF16: Int,
-  columnGrapheme: Int
-) {
-  #expect(info.selection == selection)
-  #expect(info.utf16 == utf16)
-  #expect(info.grapheme == grapheme)
-  #expect(info.stringLength == stringLength)
-  #expect(info.utf16Length == utf16Length)
-  #expect(info.currentLineIndex == currentLineIndex)
-  #expect(info.totalLineCount == totalLineCount)
-  #expect(info.lineRangeUTF16 == lineRangeUTF16)
-  #expect(info.columnUTF16 == columnUTF16)
-  #expect(info.columnGrapheme == columnGrapheme)
+private struct MultiLineCaretExpectation {
+  let selection: NSRange
+  let utf16: Int
+  let grapheme: Int
+  let stringLength: Int
+  let utf16Length: Int
+  let currentLineIndex: Int
+  let totalLineCount: Int
+  let lineRangeUTF16: NSRange
+  let columnUTF16: Int
+  let columnGrapheme: Int
+}
+
+private func expectMultiLineCaret(_ info: BlockCaretInfo, expected: MultiLineCaretExpectation) {
+  #expect(info.selection == expected.selection)
+  #expect(info.utf16 == expected.utf16)
+  #expect(info.grapheme == expected.grapheme)
+  #expect(info.stringLength == expected.stringLength)
+  #expect(info.utf16Length == expected.utf16Length)
+  #expect(info.currentLineIndex == expected.currentLineIndex)
+  #expect(info.totalLineCount == expected.totalLineCount)
+  #expect(info.lineRangeUTF16 == expected.lineRangeUTF16)
+  #expect(info.columnUTF16 == expected.columnUTF16)
+  #expect(info.columnGrapheme == expected.columnGrapheme)
 }

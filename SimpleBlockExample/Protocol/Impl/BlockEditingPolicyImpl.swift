@@ -1,5 +1,5 @@
 //
-//  BlockEditingPolicy.swift
+//  BlockEditingPolicyImpl.swift
 //  SimpleBlockExample
 //
 //  Created by hs on 2/5/26.
@@ -7,50 +7,41 @@
 
 import Foundation
 
-protocol BlockEditingPolicy {
-  func makeEditCommand(for event: EditorEvent, node: BlockNode, in context: BlockEditingContext)
-    -> EditCommand?
-}
-
-// MARK: - DefaultBlockEditingPolicy
-
 struct DefaultBlockEditingPolicy: BlockEditingPolicy {
-  func makeEditCommand(for event: EditorEvent, node: BlockNode, in context: BlockEditingContext)
-    -> EditCommand?
+  func makeEditorCommand(for event: EditorKeyEvent, node: BlockNode, in context: BlockEditingContext)
+    -> EditorCommand?
   {
     switch event {
-    case .space(let info):
+    case .spaceKey(let info):
       return handleSpace(info: info, node: node, context: context)
 
-    case .enter(let info, let isTail):
+    case .returnKey(let info, let isTail):
       return handleEnter(info: info, isTail: isTail, node: node, context: context)
 
-    case .shiftEnter:
+    case .shiftReturnKey:
       return nil
 
-    case .deleteAtStart:
+    case .backspaceAtStart:
       return handleDeleteAtStart(node: node, context: context)
 
-    case .arrowUp(let info):
+    case .arrowUpKey(let info):
       return handleArrowUp(info: info, node: node, context: context)
 
-    case .arrowDown(let info):
+    case .arrowDownKey(let info):
       return handleArrowDown(info: info, node: node, context: context)
 
-    case .arrowLeft(let info):
+    case .arrowLeftKey(let info):
       return handleArrowLeft(info: info, node: node, context: context)
 
-    case .arrowRight(let info):
+    case .arrowRightKey(let info):
       return handleArrowRight(info: info, node: node, context: context)
     }
   }
 }
 
-// MARK: - Default handlers
-
 extension DefaultBlockEditingPolicy {
-  fileprivate func handleSpace(info: CaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+  fileprivate func handleSpace(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
+    -> EditorCommand?
   {
     guard let res = matchSpaceTrigger(text: node.text, caretUTF16: info.utf16) else {
       return nil
@@ -59,12 +50,12 @@ extension DefaultBlockEditingPolicy {
     node.kind = res.kind
     context.notifyUpdate(of: node)
 
-    return EditCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
+    return EditorCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
   }
 
   fileprivate func handleEnter(
-    info: CaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContext
-  ) -> EditCommand? {
+    info: BlockCaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContext
+  ) -> EditorCommand? {
     guard let index = context.index(of: node) else { return nil }
 
     let nextKind: BlockKind
@@ -86,22 +77,22 @@ extension DefaultBlockEditingPolicy {
       let newNode = BlockNode(kind: nextKind, text: tail)
       context.insertNode(newNode, at: insertionIndex)
 
-      return EditCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
+      return EditorCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
     } else {
       let newNode = BlockNode(kind: nextKind)
       context.insertNode(newNode, at: insertionIndex)
 
-      return EditCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
+      return EditorCommand(requestFocusChange: .otherNode(id: newNode.id, caret: 0))
     }
   }
 
   fileprivate func handleDeleteAtStart(node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+    -> EditorCommand?
   {
     if node.kind != .paragraph {
       node.kind = .paragraph
       context.notifyUpdate(of: node)
-      return EditCommand(setCaretUTF16: 0)
+      return EditorCommand(setCaretUTF16: 0)
     }
 
     guard let index = context.index(of: node),
@@ -115,14 +106,14 @@ extension DefaultBlockEditingPolicy {
     context.notifyUpdate(of: previous)
     context.notifyMerge(from: node, into: previous)
 
-    return EditCommand(
+    return EditorCommand(
       requestFocusChange: .otherNode(id: previous.id, caret: caret),
       insertText: node.text
     )
   }
 
-  fileprivate func handleArrowUp(info: CaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+  fileprivate func handleArrowUp(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
+    -> EditorCommand?
   {
     guard let previous = context.previousNode(of: node) else { return nil }
 
@@ -134,35 +125,35 @@ extension DefaultBlockEditingPolicy {
       newCaret = min(info.columnUTF16, previousUTF16)
     }
 
-    return EditCommand(requestFocusChange: .otherNode(id: previous.id, caret: newCaret))
+    return EditorCommand(requestFocusChange: .otherNode(id: previous.id, caret: newCaret))
   }
 
-  fileprivate func handleArrowDown(info: CaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+  fileprivate func handleArrowDown(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
+    -> EditorCommand?
   {
     guard let next = context.nextNode(of: node) else { return nil }
 
     let nextUTF16 = (next.text as NSString).length
     let newCaret = min(info.columnUTF16, nextUTF16)
 
-    return EditCommand(requestFocusChange: .otherNode(id: next.id, caret: newCaret))
+    return EditorCommand(requestFocusChange: .otherNode(id: next.id, caret: newCaret))
   }
 
-  fileprivate func handleArrowLeft(info: CaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+  fileprivate func handleArrowLeft(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
+    -> EditorCommand?
   {
     guard info.isAtStart, let previous = context.previousNode(of: node) else { return nil }
 
     let previousUTF16 = (previous.text as NSString).length
-    return EditCommand(requestFocusChange: .otherNode(id: previous.id, caret: previousUTF16))
+    return EditorCommand(requestFocusChange: .otherNode(id: previous.id, caret: previousUTF16))
   }
 
-  fileprivate func handleArrowRight(info: CaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditCommand?
+  fileprivate func handleArrowRight(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
+    -> EditorCommand?
   {
     guard info.isAtTail, let next = context.nextNode(of: node) else { return nil }
 
-    return EditCommand(requestFocusChange: .otherNode(id: next.id, caret: 0))
+    return EditorCommand(requestFocusChange: .otherNode(id: next.id, caret: 0))
   }
 }
 
@@ -183,57 +174,57 @@ extension DefaultBlockEditingPolicy {
     // 삭제 범위 = 트리거 길이 + 공백1(현재 입력)
     let remove = caretUTF16 + 1
 
-    let u = text.utf16
-    let n = u.count
+    let utf16View = text.utf16
+    let length = utf16View.count
 
     // bounds check는 케이스마다 guard로 보장
-    func c(_ off: Int) -> UInt16 {
-      u[u.index(u.startIndex, offsetBy: off)]
+    func code(at offset: Int) -> UInt16 {
+      utf16View[utf16View.index(utf16View.startIndex, offsetBy: offset)]
     }
 
     switch caretUTF16 {
     case 1:
-      guard n >= 1 else { return nil }
-      let c0 = c(0)
+      guard length >= 1 else { return nil }
+      let code0 = code(at: 0)
       // "# "
-      if c0 == UTF16Char.HASH {
+      if code0 == UTF16Char.HASH {
         return SpaceTriggerMatch(kind: .heading(level: 1), removeUTF16: remove)
       }
       // "- " || "* "
-      if c0 == UTF16Char.DASH || c0 == UTF16Char.STAR {
+      if code0 == UTF16Char.DASH || code0 == UTF16Char.STAR {
         return SpaceTriggerMatch(kind: .bullet, removeUTF16: remove)
       }
       return nil
 
     case 2:
-      guard n >= 2 else { return nil }
-      let c0 = c(0)
-      let c1 = c(1)
+      guard length >= 2 else { return nil }
+      let code0 = code(at: 0)
+      let code1 = code(at: 1)
       // "## "
-      if c0 == UTF16Char.HASH && c1 == UTF16Char.HASH {
+      if code0 == UTF16Char.HASH && code1 == UTF16Char.HASH {
         return SpaceTriggerMatch(kind: .heading(level: 2), removeUTF16: remove)
       }
       // "[] "
-      if c0 == UTF16Char.LBR && c1 == UTF16Char.RBR {
+      if code0 == UTF16Char.LBR && code1 == UTF16Char.RBR {
         return SpaceTriggerMatch(kind: .todo(checked: false), removeUTF16: remove)
       }
       return nil
 
     case 3:
-      guard n >= 3 else { return nil }
-      let c0 = c(0)
-      let c1 = c(1)
-      let c2 = c(2)
+      guard length >= 3 else { return nil }
+      let code0 = code(at: 0)
+      let code1 = code(at: 1)
+      let code2 = code(at: 2)
       // "### "
-      if c0 == UTF16Char.HASH && c1 == UTF16Char.HASH && c2 == UTF16Char.HASH {
+      if code0 == UTF16Char.HASH && code1 == UTF16Char.HASH && code2 == UTF16Char.HASH {
         return SpaceTriggerMatch(kind: .heading(level: 3), removeUTF16: remove)
       }
       // "[ ] "
-      if c0 == UTF16Char.LBR && c1 == UTF16Char.SPACE && c2 == UTF16Char.RBR {
+      if code0 == UTF16Char.LBR && code1 == UTF16Char.SPACE && code2 == UTF16Char.RBR {
         return SpaceTriggerMatch(kind: .todo(checked: false), removeUTF16: remove)
       }
       // "[x] "
-      if c0 == UTF16Char.LBR && c1 == UTF16Char.X && c2 == UTF16Char.RBR {
+      if code0 == UTF16Char.LBR && code1 == UTF16Char.lowercaseX && code2 == UTF16Char.RBR {
         return SpaceTriggerMatch(kind: .todo(checked: true), removeUTF16: remove)
       }
       return nil
@@ -246,12 +237,12 @@ extension DefaultBlockEditingPolicy {
 
 // MARK: - UTF16 Char Codes
 
-enum UTF16Char {
+private enum UTF16Char {
   static let SPACE: UInt16 = 32  // ' '
   static let HASH: UInt16 = 35  // '#'
   static let STAR: UInt16 = 42  // '*'
   static let DASH: UInt16 = 45  // '-'
   static let LBR: UInt16 = 91  // '['
   static let RBR: UInt16 = 93  // ']'
-  static let X: UInt16 = 120  // 'x'
+  static let lowercaseX: UInt16 = 120  // 'x'
 }

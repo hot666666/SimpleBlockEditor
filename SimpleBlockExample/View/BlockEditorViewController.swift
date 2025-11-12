@@ -101,7 +101,7 @@ extension BlockEditorViewController {
     events.forEach(handleNodeEvent)
   }
 
-  fileprivate func handleNodeEvent(_ event: BlockNodeEvent) {
+  fileprivate func handleNodeEvent(_ event: EditorBlockEvent) {
     switch event {
     case .insert(let node, let index):
       insertRow(for: node, at: index)
@@ -180,7 +180,7 @@ extension BlockEditorViewController {
     controller.teardown()
   }
 
-  fileprivate func handleFocusChange(_ change: FocusChange) {
+  fileprivate func handleFocusChange(_ change: EditorFocusEvent) {
     switch change {
     case .otherNode(let id, let caret):
       focusRow(id: id, caret: caret)
@@ -193,7 +193,7 @@ extension BlockEditorViewController {
     manager.notifyUpdate(of: node)
   }
 
-  fileprivate func applyFocusChange(_ change: FocusChange, source _: BlockRowController?) {
+  fileprivate func applyFocusChange(_ change: EditorFocusEvent, source _: BlockRowController?) {
     manager.applyFocusChange(change)
   }
 
@@ -202,7 +202,7 @@ extension BlockEditorViewController {
     target.focus(caret: caret)
   }
 
-  fileprivate func command(for event: EditorEvent, node: BlockNode) -> EditCommand? {
+  fileprivate func command(for event: EditorKeyEvent, node: BlockNode) -> EditorCommand? {
     manager.editCommand(for: event, node: node)
   }
 }
@@ -214,13 +214,13 @@ extension BlockEditorViewController: BlockRowControllerDelegate {
     notifyUpdate(of: node)
   }
 
-  func rowController(_ controller: BlockRowController, requestFocusChange change: FocusChange) {
+  func rowController(_ controller: BlockRowController, requestFocusChange change: EditorFocusEvent) {
     applyFocusChange(change, source: controller)
   }
 
   func rowController(
-    _ controller: BlockRowController, commandFor event: EditorEvent, node: BlockNode
-  ) -> EditCommand? {
+    _ controller: BlockRowController, commandFor event: EditorKeyEvent, node: BlockNode
+  ) -> EditorCommand? {
     command(for: event, node: node)
   }
 }
