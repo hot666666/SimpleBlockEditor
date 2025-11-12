@@ -8,9 +8,8 @@
 import Foundation
 
 struct DefaultBlockEditingPolicy: BlockEditingPolicy {
-  func makeEditorCommand(for event: EditorKeyEvent, node: BlockNode, in context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 키 이벤트를 해석해 현재 컨텍스트 기반으로 실행할 에디터 명령을 생성합니다.
+  func makeEditorCommand(for event: EditorKeyEvent, node: BlockNode, in context: BlockEditingContextProtocol) -> EditorCommand? {
     switch event {
     case .spaceKey(let info):
       return handleSpace(info: info, node: node, context: context)
@@ -40,9 +39,8 @@ struct DefaultBlockEditingPolicy: BlockEditingPolicy {
 }
 
 extension DefaultBlockEditingPolicy {
-  fileprivate func handleSpace(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 공백 트리거를 감지해 블록 종류를 변경합니다.
+  fileprivate func handleSpace(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     guard let res = matchSpaceTrigger(text: node.text, caretUTF16: info.utf16) else {
       return nil
     }
@@ -53,8 +51,9 @@ extension DefaultBlockEditingPolicy {
     return EditorCommand(removePrefixUTF16: res.removeUTF16, setCaretUTF16: 0)
   }
 
+  /// 엔터 입력을 처리해 블록을 나누거나 새 블록을 생성합니다.
   fileprivate func handleEnter(
-    info: BlockCaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContext
+    info: BlockCaretInfo, isTail: Bool, node: BlockNode, context: BlockEditingContextProtocol
   ) -> EditorCommand? {
     guard let index = context.index(of: node) else { return nil }
 
@@ -86,9 +85,8 @@ extension DefaultBlockEditingPolicy {
     }
   }
 
-  fileprivate func handleDeleteAtStart(node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 블록 맨 앞에서 백스페이스를 눌렀을 때의 병합 로직입니다.
+  fileprivate func handleDeleteAtStart(node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     if node.kind != .paragraph {
       node.kind = .paragraph
       context.notifyUpdate(of: node)
@@ -112,9 +110,8 @@ extension DefaultBlockEditingPolicy {
     )
   }
 
-  fileprivate func handleArrowUp(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 윗줄 화살표 입력 시 이전 블록으로 포커스를 이동합니다.
+  fileprivate func handleArrowUp(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     guard let previous = context.previousNode(of: node) else { return nil }
 
     let previousUTF16 = (previous.text as NSString).length
@@ -128,9 +125,8 @@ extension DefaultBlockEditingPolicy {
     return EditorCommand(requestFocusChange: .otherNode(id: previous.id, caret: newCaret))
   }
 
-  fileprivate func handleArrowDown(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 아래 화살표 입력 시 다음 블록으로 포커스를 이동합니다.
+  fileprivate func handleArrowDown(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     guard let next = context.nextNode(of: node) else { return nil }
 
     let nextUTF16 = (next.text as NSString).length
@@ -139,34 +135,32 @@ extension DefaultBlockEditingPolicy {
     return EditorCommand(requestFocusChange: .otherNode(id: next.id, caret: newCaret))
   }
 
-  fileprivate func handleArrowLeft(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 좌측 화살표 입력이 블록 앞에서 발생하면 이전 블록으로 이동합니다.
+  fileprivate func handleArrowLeft(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     guard info.isAtStart, let previous = context.previousNode(of: node) else { return nil }
 
     let previousUTF16 = (previous.text as NSString).length
     return EditorCommand(requestFocusChange: .otherNode(id: previous.id, caret: previousUTF16))
   }
 
-  fileprivate func handleArrowRight(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContext)
-    -> EditorCommand?
-  {
+  /// 우측 화살표 입력이 블록 끝에서 발생하면 다음 블록으로 이동합니다.
+  fileprivate func handleArrowRight(info: BlockCaretInfo, node: BlockNode, context: BlockEditingContextProtocol) -> EditorCommand? {
     guard info.isAtTail, let next = context.nextNode(of: node) else { return nil }
 
     return EditorCommand(requestFocusChange: .otherNode(id: next.id, caret: 0))
   }
 }
 
-// MARK: - Matching leading trigger space
+// MARK: - Space trigger 매칭 구현
 
 extension DefaultBlockEditingPolicy {
-  // 트리거 매칭 결과
+  /// 공백 단축키 분석 결과를 담는 보조 구조체입니다.
   fileprivate struct SpaceTriggerMatch {
     let kind: BlockKind
     let removeUTF16: Int
   }
 
-  // 공백 트리거 매칭
+  /// 공백 입력 지점 앞의 문자열을 분석해 헤더/목록 토큰을 판별합니다.
   fileprivate func matchSpaceTrigger(
     text: String,
     caretUTF16: Int
@@ -235,8 +229,9 @@ extension DefaultBlockEditingPolicy {
   }
 }
 
-// MARK: - UTF16 Char Codes
+// MARK: - Key Mapping(UInt16)
 
+/// 공백 트리거 분석에 사용하는 UTF-16 코드 상수 모음입니다.
 private enum UTF16Char {
   static let SPACE: UInt16 = 32  // ' '
   static let HASH: UInt16 = 35  // '#'

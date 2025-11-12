@@ -1,5 +1,5 @@
 //
-//  BlockRowInteraction.swift
+//  BlockRowInputRouter.swift
 //  SimpleBlockExample
 //
 //  Created by hs on 11/10/25.
@@ -7,12 +7,18 @@
 
 import AppKit
 
+// MARK: - BlockRowKeyAction
+
+/// 키 입력을 정책 이벤트로 변환하는 행 레벨 라우터입니다.
 enum BlockRowKeyAction {
   case policy(EditorKeyEvent)
   case insertSpace(info: BlockCaretInfo)
   case softBreak
 }
 
+// MARK: - BlockRowInputRouter
+
+/// 텍스트 뷰 이벤트를 블록 편집 명령으로 라우팅하는 구조체입니다.
 struct BlockRowInputRouter {
   func action(for event: NSEvent, textView: BlockTextView) -> BlockRowKeyAction? {
     guard let key = Key(rawValue: event.keyCode) else { return nil }
@@ -84,10 +90,10 @@ struct BlockRowInputRouter {
   }
 }
 
-// MARK: - Private helpers
+// MARK: - Key mapping
 
-extension BlockRowInputRouter {
-  fileprivate enum Key: UInt16 {
+private extension BlockRowInputRouter {
+	enum Key: UInt16 {
     case returnKey = 36
     case space = 49
     case delete = 51
@@ -98,6 +104,6 @@ extension BlockRowInputRouter {
     case up = 126
   }
 
-  fileprivate enum VerticalDir { case up, down }
-  fileprivate enum HorizontalDir { case left, right }
+	enum VerticalDir { case up, down }
+	enum HorizontalDir { case left, right }
 }

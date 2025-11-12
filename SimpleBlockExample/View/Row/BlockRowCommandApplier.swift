@@ -5,6 +5,7 @@
 //  Created by hs on 11/12/25.
 //
 
+/// 편집 명령을 텍스트 뷰 조작으로 변환하는 유틸리티 객체입니다.
 final class BlockRowCommandApplier {
   private unowned let textView: BlockTextView
   private let beforeFocusChange: () -> Void

@@ -7,6 +7,7 @@
 
 import AppKit
 
+/// 블록 편집에 특화된 자동 크기 조절 텍스트 뷰입니다.
 final class BlockTextView: NSTextView {
   var keyEventHandler: ((NSEvent) -> Bool)?
   var pointerDidFocusHandler: ((Int) -> Void)?

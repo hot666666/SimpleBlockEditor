@@ -256,7 +256,7 @@ private func singleLineCaret(location: Int, string: String, selectionLength: Int
   )
 }
 
-private final class MockContext: BlockEditingContext {
+private final class MockContext: BlockEditingContextProtocol {
   var nodes: [BlockNode]
   var insertedNodes: [(node: BlockNode, index: Int)] = []
   var removedIndices: [Int] = []
@@ -323,9 +323,9 @@ private final class MockBlockStore: BlockStore {
 }
 
 @MainActor
-private func makeManager(nodes: [BlockNode]) async -> BlockManager {
+private func makeManager(nodes: [BlockNode]) async -> EditorBlockManager {
   let store = MockBlockStore(initialNodes: nodes)
-  let manager = BlockManager(store: store, policy: DefaultBlockEditingPolicy())
+  let manager = EditorBlockManager(store: store, policy: DefaultBlockEditingPolicy())
 
   // 데이터 로드 대기
   try? await Task.sleep(nanoseconds: 250_000_000)
@@ -333,7 +333,7 @@ private func makeManager(nodes: [BlockNode]) async -> BlockManager {
   return manager
 }
 
-private func snapshotNodes(_ manager: BlockManager) -> [BlockNode] {
+private func snapshotNodes(_ manager: EditorBlockManager) -> [BlockNode] {
   var result: [BlockNode] = []
   manager.forEachInitialNode { _, node in
     result.append(node)

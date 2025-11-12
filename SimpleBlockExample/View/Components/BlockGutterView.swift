@@ -7,6 +7,7 @@
 
 import AppKit
 
+/// 목록 번호·불릿·체크박스를 그려 주는 행 좌측 거터 뷰입니다.
 final class BlockGutterView: NSView {
   private let bulletView = NSView(frame: .zero)
   private let orderedLabel = NSTextField(labelWithString: "")

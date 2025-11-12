@@ -7,7 +7,12 @@
 
 import AppKit
 
+/// 텍스트 뷰와 거터를 묶어 행 레이아웃을 구성하는 컨테이너입니다.
 final class BlockRowView: NSView {
+	private var style = EditorStyle.style(for: .paragraph)
+	private var gutterWidthConstraint: NSLayoutConstraint!
+	private var textLeadingConstraint: NSLayoutConstraint!
+	
   let textView: BlockTextView = {
     let tv = BlockTextView(frame: .zero)
     tv.isEditable = true
@@ -18,10 +23,8 @@ final class BlockRowView: NSView {
     tv.setContentCompressionResistancePriority(.required, for: .vertical)
     return tv
   }()
+	
   private let gutterView = BlockGutterView()
-  private var style = EditorStyle.style(for: .paragraph)
-  private var gutterWidthConstraint: NSLayoutConstraint!
-  private var textLeadingConstraint: NSLayoutConstraint!
 
   init() {
     super.init(frame: .zero)
@@ -48,17 +51,20 @@ final class BlockRowView: NSView {
     textView.mouseDown(with: event)
   }
 
+  /// 텍스트 스타일을 적용하고 레이아웃을 최신화합니다.
   func apply(style: EditorStyle) {
     self.style = style
     style.apply(to: textView)
     updateLayout(for: style)
   }
 
+  /// 블록 종류/번호 정보를 받아 거터 표시를 갱신합니다.
   func updateGutter(kind: BlockKind, listNumber: Int?, style: EditorStyle) {
     gutterView.update(style: style, kind: kind, listNumber: listNumber)
     updateLayout(for: style)
   }
 
+  /// 할 일 토글 버튼 콜백을 외부에서 주입합니다.
   func setTodoToggleHandler(_ handler: ((Bool) -> Void)?) {
     gutterView.onToggle = handler
   }

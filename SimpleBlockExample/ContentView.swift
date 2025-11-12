@@ -8,11 +8,14 @@
 import SwiftUI
 
 struct ContentView: View {
-  @State private var manager = BlockManager()
+  @State private var manager = EditorBlockManager()
 
   var body: some View {
-    BlockEditorHost(manager: manager)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
+		VStack {
+			BlockEditorHost(manager: manager)
+			Spacer()
+		}
+		.padding()
   }
 }
 

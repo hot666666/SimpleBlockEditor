@@ -7,6 +7,9 @@
 
 import AppKit
 
+// MARK: - BlockRowControllerDelegate
+
+/// 행 컨트롤러가 외부로 이벤트를 전달할 때 사용하는 델리게이트입니다.
 protocol BlockRowControllerDelegate: AnyObject {
   func rowController(_ controller: BlockRowController, notifyUpdateOf node: BlockNode)
   func rowController(_ controller: BlockRowController, requestFocusChange change: EditorFocusEvent)
@@ -15,6 +18,9 @@ protocol BlockRowControllerDelegate: AnyObject {
   ) -> EditorCommand?
 }
 
+// MARK: - BlockRowController
+
+/// 단일 블록 행의 텍스트 입력·포커스·디바운스를 관리하는 컨트롤러입니다.
 final class BlockRowController: NSObject {
   let view: BlockRowView
 
@@ -116,7 +122,9 @@ extension BlockRowController {
 
   fileprivate func handleTodoToggle(isChecked: Bool) {
     node.kind = .todo(checked: isChecked)
-    flushPendingUpdate()
+    isPendingUpdate = false
+    Task { await debouncer.cancel() }
+    delegate?.rowController(self, notifyUpdateOf: node)
   }
 
   fileprivate func scheduleUpdate() {

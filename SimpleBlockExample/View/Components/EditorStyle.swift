@@ -7,6 +7,7 @@
 
 import AppKit
 
+/// Block 텍스트와 거터에 적용할 AppKit 스타일 묶음입니다.
 struct EditorStyle: Equatable {
   struct Constants {
     static let textInsets = NSSize(width: 0, height: 6)

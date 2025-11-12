@@ -5,11 +5,12 @@
 //  Created by hs on 11/4/25.
 //
 
-/// 기존 작업이 있으면 취소하고, 지정한 지연 후 새 작업을 실행하는 debouncer.
-/// 주로 빠르게 반복 호출되는 이벤트를 일정 시간 후 한 번만 처리할 때 사용.
+/// 기존 작업을 취소하고 일정 지연 뒤 최신 작업만 실행하는 비동기 디바운서입니다.
 actor Debouncer {
+  /// 현재 예약된 지연 작업입니다.
   private var task: Task<Void, Never>?
 
+  /// 새 동작을 MainActor에서 지연 실행하도록 등록합니다.
   func updateScheduleOnMain(
     delay: Duration = .nanoseconds(1_000_000_000),
     action: @MainActor @Sendable @escaping () -> Void
@@ -17,11 +18,11 @@ actor Debouncer {
     task?.cancel()
     task = Task {
       do { try await Task.sleep(for: delay) } catch { return }
-      /// MainActor에서 실행
       await action()
     }
   }
 
+  /// 예약된 작업을 취소하고 내부 상태를 비웁니다.
   func cancel() {
     task?.cancel()
     task = nil

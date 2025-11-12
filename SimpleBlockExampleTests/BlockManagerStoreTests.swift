@@ -10,7 +10,7 @@ import Testing
 struct BlockManagerStoreTests {
   @Test("init without store creates default paragraph")
   func initWithoutStoreCreatesDefaultParagraph() {
-    let manager = BlockManager(policy: DefaultBlockEditingPolicy())
+    let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
     let nodes = snapshotNodes(manager)
     #expect(nodes.count == 1)
     let node = nodes[0]
@@ -21,7 +21,7 @@ struct BlockManagerStoreTests {
   @Test("appendNode emits store insert")
   func appendNodeEmitsStoreInsert() async {
     let store = SpyBlockStore(load: [])
-    let manager = BlockManager(
+    let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
@@ -62,7 +62,7 @@ struct BlockManagerStoreTests {
   func notifyUpdateEmitsStoreUpdate() async {
     let node = BlockNode(kind: .paragraph, text: "Draft")
     let store = SpyBlockStore(load: [node])
-    let manager = BlockManager(
+    let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
@@ -91,7 +91,7 @@ struct BlockManagerStoreTests {
   func removeNodeEmitsStoreRemoval() async {
     let node = BlockNode(kind: .paragraph, text: "Delete me")
     let store = SpyBlockStore(load: [node])
-    let manager = BlockManager(
+    let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
@@ -119,7 +119,7 @@ struct BlockManagerStoreTests {
     let head = BlockNode(kind: .paragraph, text: "Hello")
     let tail = BlockNode(kind: .paragraph, text: "World")
     let store = SpyBlockStore(load: [head, tail])
-    let manager = BlockManager(
+    let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
@@ -145,7 +145,7 @@ struct BlockManagerStoreTests {
   @Test("empty store keeps default node and emits update")
   func emptyStoreKeepsDefaultNodeAndEmitsUpdate() async {
     let store = SpyBlockStore(load: [])
-    let manager = BlockManager(
+    let manager = EditorBlockManager(
       store: store,
       policy: DefaultBlockEditingPolicy()
     )
@@ -187,7 +187,9 @@ struct BlockManagerStoreTests {
   }
 }
 
-private func snapshotNodes(_ manager: BlockManager) -> [BlockNode] {
+// MARK: - Helpers
+
+private func snapshotNodes(_ manager: EditorBlockManager) -> [BlockNode] {
   var result: [BlockNode] = []
   manager.forEachInitialNode { _, node in
     result.append(node)

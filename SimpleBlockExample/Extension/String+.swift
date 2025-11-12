@@ -6,6 +6,7 @@
 //
 
 extension String {
+  /// 지정한 Grapheme 오프셋부터 문자열 끝까지 잘라 반환하고, 원본에서는 해당 부분을 제거합니다.
   mutating func cutSuffix(fromGrapheme offset: Int) -> String {
     guard offset < count else { return "" }  // 끝이면 비어 있음
 

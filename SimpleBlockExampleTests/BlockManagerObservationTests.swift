@@ -1,3 +1,4 @@
+import Observation
 import Testing
 
 @testable import SimpleBlockExample
@@ -7,7 +8,7 @@ import Testing
 struct BlockManagerObservationTests {
   @Test("insert and update emit node events")
   func insertAndUpdateEmitNodeEvents() {
-    let manager = BlockManager(policy: DefaultBlockEditingPolicy())
+    let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
     let fresh = BlockNode(kind: .paragraph, text: "Second line")
     manager.appendNode(fresh)
 
@@ -48,7 +49,7 @@ struct BlockManagerObservationTests {
 
   @Test("focus changes surface via node events")
   func focusEventsAreReported() {
-    let manager = BlockManager(policy: DefaultBlockEditingPolicy())
+    let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
     var initialNode: BlockNode?
     manager.forEachInitialNode { index, node in
       if index == 0 {
@@ -75,5 +76,37 @@ struct BlockManagerObservationTests {
     default:
       Issue.record("Expected focus node event, got \(last)")
     }
+  }
+
+  @Test("observation clock notifies dependents on node events")
+  func observationClockTracksNodeEventQueue() async throws {
+    let manager = EditorBlockManager(policy: DefaultBlockEditingPolicy())
+
+    actor Counter {
+      private var hits = 0
+      func increment() { hits += 1 }
+      func value() -> Int { hits }
+    }
+    let counter = Counter()
+
+    withObservationTracking {
+      _ = manager.observeNodeEvents()
+    } onChange: {
+      Task { await counter.increment() }
+    }
+
+    let inserted = BlockNode(kind: .paragraph, text: "Tracked")
+    manager.appendNode(inserted)
+    try await Task.sleep(nanoseconds: 5_000_000)  // allow onChange dispatch
+
+    #expect(await counter.value() == 1)
+
+    let events = manager.observeNodeEvents()
+    #expect(events.contains { event in
+      if case .insert(let node, _) = event {
+        return node.id == inserted.id
+      }
+      return false
+    })
   }
 }
